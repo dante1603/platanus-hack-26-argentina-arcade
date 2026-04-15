@@ -87,6 +87,7 @@ new Phaser.Game(config);
 let gameState = 'start'; // 'start' | 'playing' | 'paused' | 'gameover'
 let controls = { held: {}, pressed: {} };
 let ui = {};
+let player;
 
 function preload() {}
 
@@ -125,6 +126,26 @@ function create() {
     color: '#ffffff',
     align: 'center'
   }).setOrigin(0.5).setDepth(101).setVisible(false);
+
+  // Game Over UI
+  ui.gameOverText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 3, 'GAME OVER', {
+    fontSize: '48px',
+    fontFamily: 'Arial',
+    color: '#ff0000',
+    fontStyle: 'bold'
+  }).setOrigin(0.5).setDepth(101).setVisible(false);
+
+  ui.gameOverInstructions = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2, 'PRESS SPACE TO RESTART', {
+    fontSize: '24px',
+    fontFamily: 'Arial',
+    color: COLORS.textHighlight
+  }).setOrigin(0.5).setDepth(101).setVisible(false);
+
+  // Player
+  player = scene.add.rectangle(200, 300, 24, 32, COLORS.player);
+  scene.physics.add.existing(player);
+  player.body.setAllowGravity(false);
+  player.setVisible(false);
 
   // Input Handling
   const onKeyDown = (event) => {
@@ -177,6 +198,11 @@ function update(time, delta) {
       gameState = 'playing';
       ui.startText.setVisible(false);
       ui.startInstructions.setVisible(false);
+      
+      player.setPosition(200, 300);
+      player.body.setVelocity(0, 0);
+      player.body.setAllowGravity(true);
+      player.setVisible(true);
     }
   } else if (gameState === 'playing') {
     if (consumePressed('START2') || consumePressed('P1_2')) { // Use START2 (Escape) or P1_2 to pause
@@ -184,6 +210,23 @@ function update(time, delta) {
       scene.physics.pause();
       ui.pausedOverlay.setVisible(true);
       ui.pausedText.setVisible(true);
+    } else {
+      // Movimiento horizontal (220px/s)
+      if (controls.held['P1_L']) {
+        player.body.setVelocityX(-220);
+      } else if (controls.held['P1_R']) {
+        player.body.setVelocityX(220);
+      } else {
+        player.body.setVelocityX(0);
+      }
+
+      // Muerte por caída
+      if (player.y > GAME_HEIGHT) {
+        gameState = 'gameover';
+        scene.physics.pause();
+        ui.gameOverText.setVisible(true);
+        ui.gameOverInstructions.setVisible(true);
+      }
     }
   } else if (gameState === 'paused') {
     if (consumePressed('START2') || consumePressed('P1_2') || consumePressed('START1')) {
@@ -191,6 +234,17 @@ function update(time, delta) {
       scene.physics.resume();
       ui.pausedOverlay.setVisible(false);
       ui.pausedText.setVisible(false);
+    }
+  } else if (gameState === 'gameover') {
+    if (consumePressed('START1') || consumePressed('P1_U') || consumePressed('P1_1')) {
+      gameState = 'playing';
+      ui.gameOverText.setVisible(false);
+      ui.gameOverInstructions.setVisible(false);
+      scene.physics.resume();
+      
+      // Restart position
+      player.setPosition(200, 300);
+      player.body.setVelocity(0, 0);
     }
   }
 
