@@ -88,6 +88,8 @@ let gameState = 'start'; // 'start' | 'playing' | 'paused' | 'gameover'
 let controls = { held: {}, pressed: {} };
 let ui = {};
 let player;
+let floor;
+let jumps = { current: 3, max: 3, timer: 0 };
 
 function preload() {}
 
@@ -144,8 +146,21 @@ function create() {
   // Player
   player = scene.add.rectangle(200, 300, 24, 32, COLORS.player);
   scene.physics.add.existing(player);
-  player.body.setAllowGravity(false);
+  player.body.allowGravity = false;
   player.setVisible(false);
+
+  // Temporary Floor
+  floor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH, 20, 0x333333);
+  scene.physics.add.existing(floor, true); // true sets it to static
+  scene.physics.add.collider(player, floor);
+
+  // Jump Bars (HUD)
+  ui.jumpBars = [];
+  for (let i = 0; i < jumps.max; i++) {
+    let bar = scene.add.rectangle(20 + i * 28, GAME_HEIGHT - 30, 24, 10, COLORS.powerupJump);
+    bar.setOrigin(0, 0.5);
+    ui.jumpBars.push(bar);
+  }
 
   // Input Handling
   const onKeyDown = (event) => {
@@ -201,8 +216,11 @@ function update(time, delta) {
       
       player.setPosition(200, 300);
       player.body.setVelocity(0, 0);
-      player.body.setAllowGravity(true);
+      player.body.allowGravity = true;
       player.setVisible(true);
+
+      jumps.current = jumps.max;
+      jumps.timer = 0;
     }
   } else if (gameState === 'playing') {
     if (consumePressed('START2') || consumePressed('P1_2')) { // Use START2 (Escape) or P1_2 to pause
@@ -226,6 +244,38 @@ function update(time, delta) {
         scene.physics.pause();
         ui.gameOverText.setVisible(true);
         ui.gameOverInstructions.setVisible(true);
+      }
+
+      // Salto y Doble Salto
+      let isOnGround = player.body.touching.down;
+      
+      if (consumePressed('START1') || consumePressed('P1_U') || consumePressed('P1_1')) {
+        if (isOnGround) {
+          player.body.setVelocityY(-500);
+        } else if (jumps.current > 0) {
+          player.body.setVelocityY(-500);
+          jumps.current--;
+        }
+      }
+
+      // Recarga de saltos
+      if (jumps.current < jumps.max) {
+        jumps.timer += delta;
+        if (jumps.timer >= 4000) {
+          jumps.current++;
+          jumps.timer -= 4000;
+        }
+      } else {
+        jumps.timer = 0;
+      }
+
+      // Actualizar UI de saltos
+      for (let i = 0; i < jumps.max; i++) {
+        if (i < jumps.current) {
+          ui.jumpBars[i].setFillStyle(COLORS.powerupJump);
+        } else {
+          ui.jumpBars[i].setFillStyle(0x555555);
+        }
       }
     }
   } else if (gameState === 'paused') {
