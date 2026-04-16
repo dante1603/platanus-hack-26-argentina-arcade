@@ -117,6 +117,13 @@ let pendingBonusPowerup = false;
 let sectionTimer = 0;
 let currentThemeColorRGB = null;
 
+let lastTapA = 0;
+let lastTapD = 0;
+let dashActiveTimer = 0;
+let dashCooldownTimer = 0;
+let isDownDashing = false;
+let dashDirection = 0;
+
 function isMechanicActive(name) {
   return SECTIONS[currentSection].mechanics.includes(name);
 }
@@ -138,7 +145,12 @@ function create() {
 
   // Background
   currentThemeColorRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[0].color);
-  let initialBgC = Phaser.Display.Color.Darken(Phaser.Display.Color.ValueToColor(SECTIONS[0].color), 50).color;
+  let initRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[0].color);
+  let initialBgC = Phaser.Display.Color.GetColor(
+    Math.floor(initRGB.r * 0.4),
+    Math.floor(initRGB.g * 0.4),
+    Math.floor(initRGB.b * 0.4)
+  );
   ui.bgRect = scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, initialBgC).setOrigin(0, 0).setDepth(0);
 
   // Section HUD
@@ -225,7 +237,15 @@ function create() {
 
   // Overlaps
   scene.physics.add.overlap(player, spikes, () => playerDie(scene, 'spike'));
-  scene.physics.add.overlap(player, enemies, () => playerDie(scene, 'enemy'));
+  scene.physics.add.overlap(player, enemies, (pl, en) => {
+    if (isDownDashing && (pl.body.velocity.y > 10 || pl.y < en.y)) {
+      en.destroy();
+      pl.body.setVelocityY(-300);
+      isDownDashing = false;
+    } else {
+      playerDie(scene, 'enemy');
+    }
+  });
   scene.physics.add.overlap(player, enemyBullets, () => playerDie(scene, 'enemyBullet'));
   scene.physics.add.overlap(playerBullets, enemies, (bullet, enemy) => {
     let damage = bullet.getData('damage') || 1;
@@ -350,6 +370,11 @@ function update(time, delta) {
       nextEnemyTime = 3000;
       immunityTimer = 0;
       rapidFireTimer = 0;
+      lastTapA = 0;
+      lastTapD = 0;
+      dashActiveTimer = 0;
+      dashCooldownTimer = 0;
+      isDownDashing = false;
 
       currentSection = 0;
       sectionProgress = 0;
@@ -422,7 +447,11 @@ function update(time, delta) {
       currentThemeColorRGB.b += (tRGB.b - currentThemeColorRGB.b) * 0.02;
       let themeValue = Phaser.Display.Color.GetColor(Math.floor(currentThemeColorRGB.r), Math.floor(currentThemeColorRGB.g), Math.floor(currentThemeColorRGB.b));
       
-      let bgC = Phaser.Display.Color.Darken(Phaser.Display.Color.ValueToColor(themeValue), 50).color;
+      let bgC = Phaser.Display.Color.GetColor(
+        Math.floor(currentThemeColorRGB.r * 0.4),
+        Math.floor(currentThemeColorRGB.g * 0.4),
+        Math.floor(currentThemeColorRGB.b * 0.4)
+      );
       ui.bgRect.setFillStyle(bgC);
 
       // Increase Speed (max 450, +5 per 10s => +0.5 per s)
@@ -553,14 +582,44 @@ function update(time, delta) {
         nextEnemyTime = playTime + interval;
       }
 
+      // Dash Horizontal Input
+      if (consumePressed('P1_L')) {
+        if (playTime - lastTapA < 200 && playTime > dashCooldownTimer && jumps.current > 0) {
+          dashDirection = -1;
+          dashActiveTimer = playTime + 150;
+          dashCooldownTimer = playTime + 500;
+          immunityTimer = Math.max(immunityTimer, playTime + 200);
+          jumps.current--;
+        }
+        lastTapA = playTime;
+      }
+      if (consumePressed('P1_R')) {
+        if (playTime - lastTapD < 200 && playTime > dashCooldownTimer && jumps.current > 0) {
+          dashDirection = 1;
+          dashActiveTimer = playTime + 150;
+          dashCooldownTimer = playTime + 500;
+          immunityTimer = Math.max(immunityTimer, playTime + 200);
+          jumps.current--;
+        }
+        lastTapD = playTime;
+      }
+
       // Movimiento horizontal
       let playerSpeedX = 0;
-      if (controls.held['P1_L']) {
-        playerSpeedX = -220;
-      } else if (controls.held['P1_R']) {
-        playerSpeedX = 220;
-      } else if (isOnGround) {
-        playerSpeedX = -gameSpeed;
+      if (playTime < dashActiveTimer) {
+        playerSpeedX = 500 * dashDirection;
+        if (Math.random() < 0.3) {
+          let trail = scene.add.rectangle(player.x, player.y, 24, 32, COLORS.player, 0.5);
+          scene.tweens.add({ targets: trail, alpha: 0, duration: 200, onComplete: () => trail.destroy() });
+        }
+      } else {
+        if (controls.held['P1_L']) {
+          playerSpeedX = -220;
+        } else if (controls.held['P1_R']) {
+          playerSpeedX = 220;
+        } else if (isOnGround) {
+          playerSpeedX = -gameSpeed;
+        }
       }
       player.body.setVelocityX(playerSpeedX);
 
@@ -581,10 +640,19 @@ function update(time, delta) {
         player.setX(GAME_WIDTH - player.width / 2);
       }
 
-      // Salto y Doble Salto
+      // Salto y Dash Descendente
+      if (isOnGround) {
+         isDownDashing = false;
+      }
       
       if (consumePressed('START1') || consumePressed('P1_U')) {
-        if (isOnGround) {
+        if (controls.held['P1_D'] && !isOnGround) {
+          if (jumps.current > 0) {
+            isDownDashing = true;
+            player.body.setVelocityY(700);
+            jumps.current--;
+          }
+        } else if (isOnGround) {
           player.body.setVelocityY(-500);
         } else if (jumps.current > 0) {
           player.body.setVelocityY(-500);
@@ -639,8 +707,10 @@ function update(time, delta) {
         });
 
         if (closestDest) {
-          if (b.y < closestDest.y - 10) b.body.velocity.y += 15 * (delta / 16);
-          else if (b.y > closestDest.y + 10) b.body.velocity.y -= 15 * (delta / 16);
+          if (b.y < closestDest.y) b.body.velocity.y += 20 * (delta / 16);
+          else if (b.y > closestDest.y) b.body.velocity.y -= 20 * (delta / 16);
+          // Fricción para evitar el efecto "slingshot" u órbita
+          b.body.velocity.y *= 0.92;
         } else {
           b.body.velocity.y *= 0.95;
         }
@@ -707,6 +777,11 @@ function update(time, delta) {
       nextEnemyTime = 3000;
       immunityTimer = 0;
       rapidFireTimer = 0;
+      lastTapA = 0;
+      lastTapD = 0;
+      dashActiveTimer = 0;
+      dashCooldownTimer = 0;
+      isDownDashing = false;
 
       currentSection = 0;
       sectionProgress = 0;
