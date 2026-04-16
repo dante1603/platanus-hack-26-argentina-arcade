@@ -138,6 +138,7 @@ let bossHpMax = 30;
 let bossPattern = 0;
 let bossNextAction = 0;
 let bossSection = 0;
+let loopCount = 0;
 
 function isMechanicActive(name) {
   return SECTIONS[currentSection].mechanics.includes(name);
@@ -154,7 +155,7 @@ function spawnBoss(scene, sectionIdx) {
   bossMode = true;
   bossEntering = true;
   let isBoss2 = sectionIdx === 4;
-  bossHpMax = isBoss2 ? 60 : 30;
+  bossHpMax = (isBoss2 ? 60 : 30) + loopCount * 15;
   bossHp = bossHpMax;
   bossPattern = 0;
   bossNextAction = 0;
@@ -205,10 +206,11 @@ function killBoss(scene) {
     bossDying = false;
     enemyBullets.clear(true, true);
     if (bossSection === 4) {
+      loopCount++;
       currentSection = 0;
       sectionTimer = 0;
       sectionProgress = 0;
-      gameSpeed = SECTIONS[0].speedFloor + 50;
+      gameSpeed = SECTIONS[0].speedFloor + loopCount * 30;
       pendingBonusPowerup = true;
     } else {
       currentSection++;
@@ -676,6 +678,7 @@ function update(time, delta) {
       bossPattern = 0;
       bossNextAction = 0;
       bossSection = 0;
+      loopCount = 0;
 
       // Reset platforms and spikes
       platforms.clear(true, true);
@@ -746,7 +749,7 @@ function update(time, delta) {
       } else {
         ui.sectionBarFill.width = GAME_WIDTH * Math.min(sectionProgress, 1.0);
         ui.sectionBarFill.setFillStyle(SECTIONS[currentSection].color);
-        ui.sectionText.setText('S' + (currentSection + 1));
+        ui.sectionText.setText(loopCount > 0 ? 'S' + (currentSection + 1) + ' L' + (loopCount + 1) : 'S' + (currentSection + 1));
       }
 
       // Color Transition
@@ -899,9 +902,11 @@ function update(time, delta) {
       }
 
       // Spawning Enemies
-      if (playTime > nextEnemyTime && enemies.countActive(true) < 4 && isMechanicActive('enemies') && !bossMode) {
+      let enemiesInS1Loop = loopCount > 0 && currentSection === 0;
+      if (playTime > nextEnemyTime && enemies.countActive(true) < 4 && (isMechanicActive('enemies') || enemiesInS1Loop) && !bossMode) {
         let level = 1;
-        if (currentSection === 2) level = Math.random() < 0.5 ? 1 : 2;
+        if (enemiesInS1Loop) level = 2;
+        else if (currentSection === 2) level = Math.random() < 0.5 ? 1 : 2;
         else if (currentSection === 3) level = 2;
         else if (currentSection >= 4) level = 3;
 
@@ -1268,6 +1273,7 @@ function update(time, delta) {
       bossPattern = 0;
       bossNextAction = 0;
       bossSection = 0;
+      loopCount = 0;
 
       // Reset platforms and spikes
       platforms.clear(true, true);
