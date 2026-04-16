@@ -100,8 +100,8 @@ let gameSpeed = 150;
 let nextPlatformX = 0;
 let playTime = 0;
 let immunityTimer = 0;
-let rapidFireTimer = 0;
 let jumps = { current: 3, max: 3, timer: 0 };
+let shootMode = 'homing';
 
 const SECTIONS = [
   { color: 0x002244, duration: 20000, speedFloor: 150, mechanics: [] },
@@ -267,15 +267,22 @@ function create() {
 
   scene.physics.add.overlap(player, powerups, (pl, pu) => {
     if (pl.body.velocity.y > 10 || pl.y < pu.y) {
-       let pt = pu.getData('type');
-       if (pt === 0) {
-          if (jumps.current < jumps.max) jumps.current++;
-       } else if (pt === 1) {
-          immunityTimer = playTime + 5000;
-       } else if (pt === 2) {
-          rapidFireTimer = playTime + 6000;
-       }
-       pu.destroy();
+        let pt = pu.getData('type');
+        if (pt === 0) {
+           if (jumps.current < jumps.max) jumps.current++;
+        } else if (pt === 1) {
+           immunityTimer = playTime + 5000;
+        } else if (pt === 2) {
+           shootMode = 'homing';
+           ui.shootModeText.setText('◆ HOMING').setColor('#00ffff');
+        } else if (pt === 3) {
+           shootMode = 'triple';
+           ui.shootModeText.setText('◆ TRIPLE').setColor('#ff00ff');
+        } else if (pt === 4) {
+           shootMode = 'auto';
+           ui.shootModeText.setText('◆ AUTO').setColor('#ff8800');
+        }
+        pu.destroy();
     }
   });
 
@@ -303,6 +310,14 @@ function create() {
     bar.setOrigin(0, 0.5);
     ui.jumpBars.push(bar);
   }
+
+  // Shoot Mode HUD
+  ui.shootModeText = scene.add.text(GAME_WIDTH - 20, GAME_HEIGHT - 30, '◆ HOMING', {
+    fontSize: '20px',
+    fontFamily: 'Arial',
+    color: '#00ffff',
+    fontStyle: 'bold'
+  }).setOrigin(1, 0.5).setDepth(202);
 
   // Input Handling
   const onKeyDown = (event) => {
@@ -369,7 +384,8 @@ function update(time, delta) {
       lastFireTime = 0;
       nextEnemyTime = 3000;
       immunityTimer = 0;
-      rapidFireTimer = 0;
+      shootMode = 'homing';
+      ui.shootModeText.setText('◆ HOMING').setColor('#00ffff');
       lastTapA = 0;
       lastTapD = 0;
       dashActiveTimer = 0;
@@ -504,13 +520,19 @@ function update(time, delta) {
           spike.body.setOffset(2, 4);
         } else if (!isMoving && (pendingBonusPowerup || Math.random() < 0.15)) {
           pendingBonusPowerup = false;
-          let pType = Phaser.Math.Between(0, 2);
-          let color = pType === 0 ? COLORS.powerupJump : (pType === 1 ? COLORS.powerupInvune : COLORS.powerupRapid);
-          
+          let pType = Phaser.Math.Between(0, 4);
           let pu;
-          if (pType === 0) pu = scene.add.triangle(nextPlatformX + platWidth/2, platY - 40, 0, 15, 15, 15, 7.5, 0, color);
-          else if (pType === 1) pu = scene.add.circle(nextPlatformX + platWidth/2, platY - 40, 10, color);
-          else pu = scene.add.rectangle(nextPlatformX + platWidth/2, platY - 40, 12, 16, color);
+          if (pType === 0) { // Jump: Green Triangle UP
+              pu = scene.add.triangle(nextPlatformX + platWidth/2, platY - 40, 0, 15, 15, 15, 7.5, 0, COLORS.powerupJump);
+          } else if (pType === 1) { // Invuln: Blue Circle
+              pu = scene.add.circle(nextPlatformX + platWidth/2, platY - 40, 10, COLORS.powerupInvune);
+          } else if (pType === 2) { // Homing mode: Cyan
+              pu = scene.add.triangle(nextPlatformX + platWidth/2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0x00ffff);
+          } else if (pType === 3) { // Triple mode: Magenta
+              pu = scene.add.triangle(nextPlatformX + platWidth/2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0xff00ff);
+          } else { // Auto mode: Orange
+              pu = scene.add.triangle(nextPlatformX + platWidth/2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0xff8800);
+          }
           
           powerups.add(pu);
           scene.physics.add.existing(pu);
@@ -661,17 +683,43 @@ function update(time, delta) {
       }
 
       // Disparo
-      if (controls.held['P1_1']) {
-        let cooldown = (playTime < rapidFireTimer) ? 100 : 400;
-        if (playTime > lastFireTime + cooldown) {
-          lastFireTime = playTime;
-          let bullet = scene.add.circle(player.x + 15, player.y, 6, COLORS.bullet);
-          playerBullets.add(bullet);
-          scene.physics.add.existing(bullet);
-          bullet.body.allowGravity = false;
-          bullet.body.setVelocityX(600);
-          bullet.setData('damage', 1);
-        }
+      let firePressed = consumePressed('P1_1');
+      if (shootMode === 'auto') {
+         if (controls.held['P1_1'] && playTime > lastFireTime + 100) {
+            lastFireTime = playTime;
+            let bullet = scene.add.circle(player.x + 15, player.y, 6, COLORS.bullet);
+            playerBullets.add(bullet);
+            scene.physics.add.existing(bullet);
+            bullet.body.allowGravity = false;
+            bullet.body.setVelocityX(600);
+            bullet.setData('damage', 0.5);
+            bullet.setData('type', 'auto');
+         }
+      } else {
+         let cooldown = shootMode === 'triple' ? 500 : 400;
+         if (firePressed && playTime > lastFireTime + cooldown) {
+            lastFireTime = playTime;
+            if (shootMode === 'triple') {
+                for (let angle of [-15, 0, 15]) {
+                   let bullet = scene.add.circle(player.x + 15, player.y, 6, COLORS.bullet);
+                   playerBullets.add(bullet);
+                   scene.physics.add.existing(bullet);
+                   bullet.body.allowGravity = false;
+                   let rad = Phaser.Math.DegToRad(angle);
+                   bullet.body.setVelocity(600 * Math.cos(rad), 600 * Math.sin(rad));
+                   bullet.setData('damage', 1);
+                   bullet.setData('type', 'triple');
+                }
+            } else {
+                let bullet = scene.add.circle(player.x + 15, player.y, 6, COLORS.bullet);
+                playerBullets.add(bullet);
+                scene.physics.add.existing(bullet);
+                bullet.body.allowGravity = false;
+                bullet.body.setVelocityX(600);
+                bullet.setData('damage', 1);
+                bullet.setData('type', 'homing');
+            }
+         }
       }
 
       // Update Enemy behavior and Bullets
@@ -696,23 +744,24 @@ function update(time, delta) {
 
       // Update Bullets
       playerBullets.getChildren().forEach(b => {
-        let closestDest = null;
-        let closestDist = Infinity;
-        enemies.getChildren().forEach(e => {
-          let dist = Phaser.Math.Distance.Between(b.x, b.y, e.x, e.y);
-          if (dist < closestDist && e.x > b.x) {
-            closestDist = dist;
-            closestDest = e;
-          }
-        });
+        if (b.getData('type') === 'homing') {
+          let closestDest = null;
+          let closestDist = Infinity;
+          enemies.getChildren().forEach(e => {
+            let dist = Phaser.Math.Distance.Between(b.x, b.y, e.x, e.y);
+            if (dist < closestDist && e.x > b.x) {
+              closestDist = dist;
+              closestDest = e;
+            }
+          });
 
-        if (closestDest) {
-          if (b.y < closestDest.y) b.body.velocity.y += 20 * (delta / 16);
-          else if (b.y > closestDest.y) b.body.velocity.y -= 20 * (delta / 16);
-          // Fricción para evitar el efecto "slingshot" u órbita
-          b.body.velocity.y *= 0.92;
-        } else {
-          b.body.velocity.y *= 0.95;
+          if (closestDest) {
+            if (b.y < closestDest.y) b.body.velocity.y += 20 * (delta / 16);
+            else if (b.y > closestDest.y) b.body.velocity.y -= 20 * (delta / 16);
+            b.body.velocity.y *= 0.92;
+          } else {
+            b.body.velocity.y *= 0.95;
+          }
         }
 
         // Estela
@@ -776,7 +825,8 @@ function update(time, delta) {
       lastFireTime = 0;
       nextEnemyTime = 3000;
       immunityTimer = 0;
-      rapidFireTimer = 0;
+      shootMode = 'homing';
+      ui.shootModeText.setText('◆ HOMING').setColor('#00ffff');
       lastTapA = 0;
       lastTapD = 0;
       dashActiveTimer = 0;
