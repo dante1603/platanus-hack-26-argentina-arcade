@@ -163,7 +163,7 @@ async function updateLeaderboard(score) {
 
 function playerDie(scene, type) {
   if (gameState === 'playing') {
-    if ((type === 'enemy' || type === 'enemyBullet') && playTime < immunityTimer) return;
+    if ((type === 'enemy' || type === 'enemyBullet' || type === 'airTriangle') && playTime < immunityTimer) return;
     gameState = 'gameover';
     scene.physics.pause();
     ui.gameOverText.setVisible(true);
@@ -277,6 +277,8 @@ function create() {
 
   // Powerups Group
   powerups = scene.physics.add.group({ allowGravity: false });
+  let warningLinesGroup = scene.add.group();
+  scene.warningLinesGroup = warningLinesGroup;
 
   // Overlaps
   scene.physics.add.overlap(player, spikes, () => playerDie(scene, 'spike'));
@@ -485,6 +487,7 @@ function update(time, delta) {
       if (typeof airTriangles !== 'undefined') airTriangles.clear(true, true);
       enemyBullets.clear(true, true);
       powerups.clear(true, true);
+      if (scene.warningLinesGroup) scene.warningLinesGroup.clear(true, true);
       let startFloor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH * 1.5, 40, COLORS.platform);
       platforms.add(startFloor);
       scene.physics.add.existing(startFloor);
@@ -662,6 +665,7 @@ function update(time, delta) {
          let spawnY = zones[Phaser.Math.Between(0, 2)];
          
          let wLine = scene.add.rectangle(GAME_WIDTH/2, spawnY, GAME_WIDTH, 2, 0xff0000, 0.5).setDepth(50);
+         if (scene.warningLinesGroup) scene.warningLinesGroup.add(wLine);
          scene.time.delayedCall(800, () => wLine.destroy());
          
          scene.time.delayedCall(1000, () => {
@@ -1016,6 +1020,7 @@ function update(time, delta) {
       if (typeof airTriangles !== 'undefined') airTriangles.clear(true, true);
       enemyBullets.clear(true, true);
       powerups.clear(true, true);
+      if (scene.warningLinesGroup) scene.warningLinesGroup.clear(true, true);
       let startFloor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH * 1.5, 40, COLORS.platform);
       platforms.add(startFloor);
       scene.physics.add.existing(startFloor);

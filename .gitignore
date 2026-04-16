@@ -6,3 +6,9 @@ yarn.lock
 *.log
 .env
 .env.local
+planes_old/
+DOCUMENTACION_MECANICAS.md
+PRD_v2_delta.md
+PlanEjecutivo_v2.md
+docs_output.txt
+scratch/
