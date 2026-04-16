@@ -128,8 +128,127 @@ let dashDirection = 0;
 let enemiesDefeated = 0;
 let currentScore = 0;
 
+let bossMode = false;
+let bossEntering = false;
+let bossDying = false;
+let boss = null;
+let bossHp = 0;
+let bossHpMax = 30;
+let bossPattern = 0;
+let bossNextAction = 0;
+
 function isMechanicActive(name) {
   return SECTIONS[currentSection].mechanics.includes(name);
+}
+
+function spawnBoss(scene) {
+  bossMode = true;
+  bossEntering = true;
+  bossHp = bossHpMax;
+  bossPattern = 0;
+  bossNextAction = 0;
+  enemies.clear(true, true);
+  enemyBullets.clear(true, true);
+  boss = scene.add.rectangle(GAME_WIDTH + 60, GAME_HEIGHT / 2 - 50, 80, 80, 0xff8800);
+  boss.setDepth(20);
+  scene.tweens.add({
+    targets: boss,
+    x: GAME_WIDTH - 120,
+    duration: 1200,
+    ease: 'Power2',
+    onComplete: () => {
+      bossEntering = false;
+      bossNextAction = playTime + 1500;
+    }
+  });
+}
+
+function killBoss(scene) {
+  if (bossDying) return;
+  bossDying = true;
+  let bx = boss.x, by = boss.y;
+  boss.destroy();
+  boss = null;
+  let flash = scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0xffffff, 1).setOrigin(0, 0).setDepth(300);
+  scene.tweens.add({ targets: flash, alpha: 0, duration: 600, onComplete: () => flash.destroy() });
+  for (let i = 0; i < 8; i++) {
+    let p = scene.add.circle(bx, by, Phaser.Math.Between(5, 10), 0xff8800).setDepth(200);
+    let angle = (i / 8) * Math.PI * 2;
+    let dist = Phaser.Math.Between(80, 200);
+    scene.tweens.add({
+      targets: p,
+      x: bx + Math.cos(angle) * dist,
+      y: by + Math.sin(angle) * dist,
+      alpha: 0,
+      duration: 800,
+      ease: 'Power2',
+      onComplete: () => p.destroy()
+    });
+  }
+  scene.time.delayedCall(1000, () => {
+    if (gameState !== 'playing') return;
+    bossMode = false;
+    bossDying = false;
+    enemyBullets.clear(true, true);
+    currentSection++;
+    pendingBonusPowerup = true;
+    sectionTimer = 0;
+    sectionProgress = 0;
+    gameSpeed = Math.max(SECTIONS[currentSection].speedFloor, gameSpeed * 0.8);
+    let flash2 = scene.add.graphics();
+    flash2.fillStyle(SECTIONS[currentSection].color, 1);
+    flash2.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    flash2.setDepth(200);
+    scene.tweens.add({ targets: flash2, alpha: 0, duration: 300, onComplete: () => flash2.destroy() });
+  });
+}
+
+function executeBossPattern(scene) {
+  if (!boss || !boss.active || bossDying) return;
+  let pat = bossPattern % 3;
+  let spawnBB = (x, y, vx, vy) => {
+    if (!bossMode || bossDying || !scene.physics) return;
+    let b = scene.add.circle(x, y, 9, 0xff2200).setDepth(50);
+    enemyBullets.add(b);
+    scene.physics.add.existing(b);
+    b.body.allowGravity = false;
+    b.body.setVelocity(vx, vy);
+  };
+  if (pat === 0) {
+    let baseAngle = Phaser.Math.Angle.Between(boss.x, boss.y, player.x, player.y);
+    for (let i = 0; i < 6; i++) {
+      let a = baseAngle - Phaser.Math.DegToRad(50) + i * Phaser.Math.DegToRad(20);
+      spawnBB(boss.x - 40, boss.y, Math.cos(a) * 300, Math.sin(a) * 300);
+    }
+    bossNextAction = playTime + 4000;
+  } else if (pat === 1) {
+    let heights = [100, 230, 360, 480];
+    heights.forEach((h, i) => {
+      scene.time.delayedCall(i * 300, () => {
+        if (!bossMode || bossDying) return;
+        spawnBB(boss ? boss.x - 40 : GAME_WIDTH - 160, h, -380, 0);
+      });
+    });
+    bossNextAction = playTime + 4200;
+  } else {
+    let positions = [];
+    for (let i = 0; i < 3; i++) {
+      positions.push({ x: Phaser.Math.Between(80, 500), y: Phaser.Math.Between(80, 500) });
+    }
+    let markers = positions.map(p =>
+      scene.add.text(p.x, p.y, 'X', { fontSize: '28px', fontFamily: 'Arial', color: '#ff0000', fontStyle: 'bold' }).setOrigin(0.5).setDepth(100)
+    );
+    scene.time.delayedCall(1000, () => {
+      markers.forEach(m => m.destroy());
+      if (!bossMode || bossDying || !boss) return;
+      positions.forEach(p => {
+        let a = Phaser.Math.Angle.Between(boss.x, boss.y, p.x, p.y);
+        spawnBB(boss.x - 40, boss.y, Math.cos(a) * 320, Math.sin(a) * 320);
+      });
+    });
+    bossNextAction = playTime + 4500;
+  }
+  bossPattern++;
 }
 
 async function updateLeaderboard(score) {
@@ -479,6 +598,15 @@ function update(time, delta) {
       pendingBonusPowerup = false;
       currentThemeColorRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[0].color);
 
+      bossMode = false;
+      bossEntering = false;
+      bossDying = false;
+      if (boss && boss.active) boss.destroy();
+      boss = null;
+      bossHp = 0;
+      bossPattern = 0;
+      bossNextAction = 0;
+
       // Reset platforms and spikes
       platforms.clear(true, true);
       spikes.clear(true, true);
@@ -512,7 +640,11 @@ function update(time, delta) {
       sectionProgress = sectionTimer / SECTIONS[currentSection].duration;
 
       if (sectionProgress >= 1.0) {
-        if (currentSection < 4) {
+        if (currentSection === 1 && !bossMode && !bossDying) {
+          sectionProgress = 1.0;
+          sectionTimer = SECTIONS[currentSection].duration;
+          if (!boss && !bossEntering) spawnBoss(scene);
+        } else if (currentSection < 4 && !bossMode) {
           sectionTimer -= SECTIONS[currentSection].duration;
           sectionProgress = 0;
           currentSection++;
@@ -530,14 +662,20 @@ function update(time, delta) {
           });
 
           gameSpeed = Math.max(SECTIONS[currentSection].speedFloor, gameSpeed * 0.8);
-        } else {
+        } else if (currentSection >= 4) {
           sectionProgress = 1.0;
         }
       }
 
-      ui.sectionBarFill.width = GAME_WIDTH * Math.min(sectionProgress, 1.0);
-      ui.sectionBarFill.setFillStyle(SECTIONS[currentSection].color);
-      ui.sectionText.setText('S' + (currentSection + 1));
+      if (bossMode) {
+        ui.sectionBarFill.width = GAME_WIDTH * Math.max(0, bossHp / bossHpMax);
+        ui.sectionBarFill.setFillStyle(0xff0000);
+        ui.sectionText.setText('BOSS');
+      } else {
+        ui.sectionBarFill.width = GAME_WIDTH * Math.min(sectionProgress, 1.0);
+        ui.sectionBarFill.setFillStyle(SECTIONS[currentSection].color);
+        ui.sectionText.setText('S' + (currentSection + 1));
+      }
 
       // Color Transition
       let tRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[currentSection].color);
@@ -562,8 +700,8 @@ function update(time, delta) {
         let platY = Phaser.Math.Between(250, 500);
         let platWidth = Phaser.Math.Between(150, 300);
         let randSubtype = Math.random();
-        let hasSpikes = randSubtype < 0.25 && isMechanicActive('spikes');
-        let isMoving = randSubtype >= 0.25 && randSubtype < 0.5 && isMechanicActive('moving');
+        let hasSpikes = randSubtype < 0.25 && isMechanicActive('spikes') && !bossMode;
+        let isMoving = randSubtype >= 0.25 && randSubtype < 0.5 && isMechanicActive('moving') && !bossMode;
 
         let platColor = isMoving ? COLORS.platformMoving : themeValue;
         let plat = scene.add.rectangle(nextPlatformX + platWidth / 2, platY, platWidth, 20, platColor);
@@ -656,7 +794,7 @@ function update(time, delta) {
       nextPlatformX -= gameSpeed * (delta / 1000);
 
       // Spawning Air Triangles
-      if (currentSection >= 3 && airTriangles.countActive(true) < 2 && Math.random() < 0.005) {
+      if (currentSection >= 3 && !bossMode && airTriangles.countActive(true) < 2 && Math.random() < 0.005) {
         let lvl = 1;
         if (currentSection === 3) lvl = Math.random() < 0.5 ? 1 : 2;
         else if (currentSection === 4) lvl = Math.random() < 0.3 ? 2 : 3;
@@ -682,7 +820,7 @@ function update(time, delta) {
       }
 
       // Spawning Enemies
-      if (playTime > nextEnemyTime && enemies.countActive(true) < 4 && isMechanicActive('enemies')) {
+      if (playTime > nextEnemyTime && enemies.countActive(true) < 4 && isMechanicActive('enemies') && !bossMode) {
         let level = 1;
         if (currentSection === 2) level = Math.random() < 0.5 ? 1 : 2;
         else if (currentSection === 3) level = 2;
@@ -892,6 +1030,19 @@ function update(time, delta) {
 
       // Update Bullets
       playerBullets.getChildren().forEach(b => {
+        if (bossMode && boss && boss.active && !bossDying) {
+          let hw = boss.width / 2 + 8;
+          let hh = boss.height / 2 + 8;
+          if (Math.abs(b.x - boss.x) < hw && Math.abs(b.y - boss.y) < hh) {
+            let dmg = b.getData('damage') || 1;
+            bossHp -= dmg;
+            b.destroy();
+            boss.setFillStyle(0xffffff);
+            scene.time.delayedCall(80, () => { if (boss && boss.active) boss.setFillStyle(0xff8800); });
+            if (bossHp <= 0 && !bossDying) killBoss(scene);
+            return;
+          }
+        }
         if (b.getData('type') === 'homing') {
           let closestDest = null;
           let closestDist = Infinity;
@@ -939,6 +1090,11 @@ function update(time, delta) {
           bullet.body.setVelocity(Math.cos(angle) * 450, Math.sin(angle) * 450);
         }
       });
+
+      // Boss pattern execution
+      if (bossMode && boss && boss.active && !bossEntering && !bossDying) {
+        if (playTime > bossNextAction) executeBossPattern(scene);
+      }
 
       // Recarga de saltos
       if (jumps.current < jumps.max) {
@@ -1012,6 +1168,15 @@ function update(time, delta) {
       pendingBonusPowerup = false;
       currentThemeColorRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[0].color);
 
+      bossMode = false;
+      bossEntering = false;
+      bossDying = false;
+      if (boss && boss.active) boss.destroy();
+      boss = null;
+      bossHp = 0;
+      bossPattern = 0;
+      bossNextAction = 0;
+
       // Reset platforms and spikes
       platforms.clear(true, true);
       spikes.clear(true, true);
@@ -1021,14 +1186,14 @@ function update(time, delta) {
       enemyBullets.clear(true, true);
       powerups.clear(true, true);
       if (scene.warningLinesGroup) scene.warningLinesGroup.clear(true, true);
-      let startFloor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH * 1.5, 40, COLORS.platform);
-      platforms.add(startFloor);
-      scene.physics.add.existing(startFloor);
-      startFloor.body.allowGravity = false;
-      startFloor.body.immovable = true;
-      startFloor.body.checkCollision.down = false;
-      startFloor.body.checkCollision.left = false;
-      startFloor.body.checkCollision.right = false;
+      let startFloor2 = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH * 1.5, 40, COLORS.platform);
+      platforms.add(startFloor2);
+      scene.physics.add.existing(startFloor2);
+      startFloor2.body.allowGravity = false;
+      startFloor2.body.immovable = true;
+      startFloor2.body.checkCollision.down = false;
+      startFloor2.body.checkCollision.left = false;
+      startFloor2.body.checkCollision.right = false;
     }
   }
 
