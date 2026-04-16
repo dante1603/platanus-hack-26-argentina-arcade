@@ -94,6 +94,7 @@ let playerBullets;
 let enemies;
 let enemyBullets;
 let powerups;
+let airTriangles;
 let lastFireTime = 0;
 let nextEnemyTime = 0;
 let gameSpeed = 150;
@@ -262,6 +263,14 @@ function create() {
   
   // Enemies
   enemies = scene.physics.add.group({ allowGravity: false });
+  airTriangles = scene.physics.add.group({ allowGravity: false });
+
+  scene.physics.add.overlap(player, airTriangles, (pl, tri) => playerDie(scene, 'airTriangle'));
+  scene.physics.add.overlap(playerBullets, airTriangles, (bullet, tri) => {
+    bullet.destroy();
+    tri.destroy();
+    enemiesDefeated++;
+  });
 
   // Enemy Bullets
   enemyBullets = scene.physics.add.group({ allowGravity: false });
@@ -305,7 +314,13 @@ function create() {
     if (pl.body.velocity.y > 10 || pl.y < pu.y) {
         let pt = pu.getData('type');
         if (pt === 0) {
-           if (jumps.current < jumps.max) jumps.current++;
+           if (jumps.max < 6) {
+               jumps.max++;
+               let bar = scene.add.rectangle(20 + (jumps.max - 1) * 28, GAME_HEIGHT - 30, 24, 10, COLORS.powerupJump);
+               bar.setOrigin(0, 0.5);
+               ui.jumpBars.push(bar);
+           }
+           jumps.current = jumps.max;
         } else if (pt === 1) {
            immunityTimer = playTime + 5000;
         } else if (pt === 2) {
@@ -428,6 +443,13 @@ function update(time, delta) {
       player.body.allowGravity = true;
       player.setVisible(true);
 
+      if (ui.jumpBars.length > 3) {
+          for (let i = 3; i < ui.jumpBars.length; i++) {
+              ui.jumpBars[i].destroy();
+          }
+          ui.jumpBars = ui.jumpBars.slice(0, 3);
+      }
+      jumps.max = 3;
       jumps.current = jumps.max;
       jumps.timer = 0;
       gameSpeed = 150;
@@ -460,6 +482,7 @@ function update(time, delta) {
       spikes.clear(true, true);
       playerBullets.clear(true, true);
       enemies.clear(true, true);
+      if (typeof airTriangles !== 'undefined') airTriangles.clear(true, true);
       enemyBullets.clear(true, true);
       powerups.clear(true, true);
       let startFloor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH * 1.5, 40, COLORS.platform);
@@ -628,6 +651,31 @@ function update(time, delta) {
       });
       // Also scroll nextPlatformX to the left so it stays relative to the world
       nextPlatformX -= gameSpeed * (delta / 1000);
+
+      // Spawning Air Triangles
+      if (currentSection >= 3 && airTriangles.countActive(true) < 2 && Math.random() < 0.005) {
+         let lvl = 1;
+         if (currentSection === 3) lvl = Math.random() < 0.5 ? 1 : 2;
+         else if (currentSection === 4) lvl = Math.random() < 0.3 ? 2 : 3;
+
+         let zones = [Phaser.Math.Between(50, 150), Phaser.Math.Between(200, 350), Phaser.Math.Between(400, 520)];
+         let spawnY = zones[Phaser.Math.Between(0, 2)];
+         
+         let wLine = scene.add.rectangle(GAME_WIDTH/2, spawnY, GAME_WIDTH, 2, 0xff0000, 0.5).setDepth(50);
+         scene.time.delayedCall(800, () => wLine.destroy());
+         
+         scene.time.delayedCall(1000, () => {
+             if (gameState !== 'playing') return;
+             let tri = scene.add.triangle(850, spawnY, 0, 15, 30, 0, 30, 30, currentThemeColorRGB ? Phaser.Display.Color.GetColor(currentThemeColorRGB.r, currentThemeColorRGB.g, currentThemeColorRGB.b) : 0xffffff);
+             airTriangles.add(tri);
+             scene.physics.add.existing(tri);
+             tri.body.allowGravity = false;
+             let velX = lvl === 1 ? -300 : -500;
+             tri.body.setVelocityX(velX);
+             tri.setData('level', lvl);
+             tri.setData('fired', false);
+         });
+      }
 
       // Spawning Enemies
       if (playTime > nextEnemyTime && enemies.countActive(true) < 4 && isMechanicActive('enemies')) {
@@ -874,6 +922,19 @@ function update(time, delta) {
           b.destroy();
         }
       });
+      
+      airTriangles.getChildren().forEach(tri => {
+          if (tri.x < -50) tri.destroy();
+          else if (tri.getData('level') === 3 && !tri.getData('fired') && tri.x < 600) {
+              tri.setData('fired', true);
+              let bullet = scene.add.rectangle(tri.x, tri.y, 12, 12, COLORS.enemyBullet);
+              enemyBullets.add(bullet);
+              scene.physics.add.existing(bullet);
+              bullet.body.allowGravity = false;
+              let angle = Phaser.Math.Angle.Between(tri.x, tri.y, player.x, player.y);
+              bullet.body.setVelocity(Math.cos(angle) * 450, Math.sin(angle) * 450);
+          }
+      });
 
       // Recarga de saltos
       if (jumps.current < jumps.max) {
@@ -913,6 +974,13 @@ function update(time, delta) {
       player.setPosition(200, 300);
       player.body.setVelocity(0, 0);
 
+      if (ui.jumpBars.length > 3) {
+          for (let i = 3; i < ui.jumpBars.length; i++) {
+              ui.jumpBars[i].destroy();
+          }
+          ui.jumpBars = ui.jumpBars.slice(0, 3);
+      }
+      jumps.max = 3;
       jumps.current = jumps.max;
       jumps.timer = 0;
       gameSpeed = 150;
@@ -945,6 +1013,7 @@ function update(time, delta) {
       spikes.clear(true, true);
       playerBullets.clear(true, true);
       enemies.clear(true, true);
+      if (typeof airTriangles !== 'undefined') airTriangles.clear(true, true);
       enemyBullets.clear(true, true);
       powerups.clear(true, true);
       let startFloor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH * 1.5, 40, COLORS.platform);
