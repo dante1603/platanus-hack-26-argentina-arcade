@@ -19,7 +19,7 @@ const COLORS = {
 };
 
 // DO NOT replace existing keys — they match the physical arcade cabinet wiring.
-// To add local testing shortcuts, append extra keys to any array.
+// To add local testing shortcuts, append extra keys to any array a.
 const CABINET_KEYS = {
   P1_U: ['w', 'ArrowUp'],
   P1_D: ['s', 'ArrowDown'],
@@ -134,26 +134,26 @@ function isMechanicActive(name) {
 
 async function updateLeaderboard(score) {
   if (!window.platanusArcadeStorage) return;
-  
+
   ui.leaderboardText.setText('Saving score...');
   ui.leaderboardText.setVisible(true);
-  
+
   try {
     let result = await window.platanusArcadeStorage.get('chromadash-leaderboard');
     let top = [];
     if (result && result.found && result.value && Array.isArray(result.value.top)) {
       top = result.value.top;
     }
-    
+
     top.push({ score: score });
     top.sort((a, b) => b.score - a.score);
     if (top.length > 5) top = top.slice(0, 5);
-    
+
     await window.platanusArcadeStorage.set('chromadash-leaderboard', { top: top });
-    
+
     let lbText = 'TOP 5 SCORES:\n\n';
     for (let i = 0; i < top.length; i++) {
-        lbText += `${i+1}. ${top[i].score}\n`;
+      lbText += `${i + 1}. ${top[i].score}\n`;
     }
     ui.leaderboardText.setText(lbText);
   } catch (err) {
@@ -168,12 +168,12 @@ function playerDie(scene, type) {
     scene.physics.pause();
     ui.gameOverText.setVisible(true);
     ui.gameOverInstructions.setVisible(true);
-    
+
     updateLeaderboard(currentScore);
   }
 }
 
-function preload() {}
+function preload() { }
 
 function create() {
   const scene = this;
@@ -260,7 +260,7 @@ function create() {
 
   // Player Bullets
   playerBullets = scene.physics.add.group({ allowGravity: false });
-  
+
   // Enemies
   enemies = scene.physics.add.group({ allowGravity: false });
   airTriangles = scene.physics.add.group({ allowGravity: false });
@@ -298,9 +298,9 @@ function create() {
     let hp = enemy.getData('hp') || 1;
     hp -= damage;
     enemy.setData('hp', hp);
-    
+
     bullet.destroy();
-    
+
     if (hp <= 0) {
       enemy.destroy();
       enemiesDefeated++;
@@ -314,28 +314,28 @@ function create() {
 
   scene.physics.add.overlap(player, powerups, (pl, pu) => {
     if (pl.body.velocity.y > 10 || pl.y < pu.y) {
-        let pt = pu.getData('type');
-        if (pt === 0) {
-           if (jumps.max < 6) {
-               jumps.max++;
-               let bar = scene.add.rectangle(20 + (jumps.max - 1) * 28, GAME_HEIGHT - 30, 24, 10, COLORS.powerupJump);
-               bar.setOrigin(0, 0.5);
-               ui.jumpBars.push(bar);
-           }
-           jumps.current = jumps.max;
-        } else if (pt === 1) {
-           immunityTimer = playTime + 5000;
-        } else if (pt === 2) {
-           shootMode = 'homing';
-           ui.shootModeText.setText('◆ HOMING').setColor('#00ffff');
-        } else if (pt === 3) {
-           shootMode = 'triple';
-           ui.shootModeText.setText('◆ TRIPLE').setColor('#ff00ff');
-        } else if (pt === 4) {
-           shootMode = 'auto';
-           ui.shootModeText.setText('◆ AUTO').setColor('#ff8800');
+      let pt = pu.getData('type');
+      if (pt === 0) {
+        if (jumps.max < 6) {
+          jumps.max++;
+          let bar = scene.add.rectangle(20 + (jumps.max - 1) * 28, GAME_HEIGHT - 30, 24, 10, COLORS.powerupJump);
+          bar.setOrigin(0, 0.5);
+          ui.jumpBars.push(bar);
         }
-        pu.destroy();
+        jumps.current = jumps.max;
+      } else if (pt === 1) {
+        immunityTimer = playTime + 5000;
+      } else if (pt === 2) {
+        shootMode = 'homing';
+        ui.shootModeText.setText('◆ HOMING').setColor('#00ffff');
+      } else if (pt === 3) {
+        shootMode = 'triple';
+        ui.shootModeText.setText('◆ TRIPLE').setColor('#ff00ff');
+      } else if (pt === 4) {
+        shootMode = 'auto';
+        ui.shootModeText.setText('◆ AUTO').setColor('#ff8800');
+      }
+      pu.destroy();
     }
   });
 
@@ -439,17 +439,17 @@ function update(time, delta) {
       gameState = 'playing';
       ui.startText.setVisible(false);
       ui.startInstructions.setVisible(false);
-      
+
       player.setPosition(200, 300);
       player.body.setVelocity(0, 0);
       player.body.allowGravity = true;
       player.setVisible(true);
 
       if (ui.jumpBars.length > 3) {
-          for (let i = 3; i < ui.jumpBars.length; i++) {
-              ui.jumpBars[i].destroy();
-          }
-          ui.jumpBars = ui.jumpBars.slice(0, 3);
+        for (let i = 3; i < ui.jumpBars.length; i++) {
+          ui.jumpBars[i].destroy();
+        }
+        ui.jumpBars = ui.jumpBars.slice(0, 3);
       }
       jumps.max = 3;
       jumps.current = jumps.max;
@@ -510,14 +510,14 @@ function update(time, delta) {
       // Section Progress
       sectionTimer += delta;
       sectionProgress = sectionTimer / SECTIONS[currentSection].duration;
-      
+
       if (sectionProgress >= 1.0) {
         if (currentSection < 4) {
           sectionTimer -= SECTIONS[currentSection].duration;
           sectionProgress = 0;
           currentSection++;
           pendingBonusPowerup = true;
-          
+
           let flash = scene.add.graphics();
           flash.fillStyle(SECTIONS[currentSection].color, 1);
           flash.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
@@ -528,13 +528,13 @@ function update(time, delta) {
             duration: 300,
             onComplete: () => flash.destroy()
           });
-          
+
           gameSpeed = Math.max(SECTIONS[currentSection].speedFloor, gameSpeed * 0.8);
         } else {
           sectionProgress = 1.0;
         }
       }
-      
+
       ui.sectionBarFill.width = GAME_WIDTH * Math.min(sectionProgress, 1.0);
       ui.sectionBarFill.setFillStyle(SECTIONS[currentSection].color);
       ui.sectionText.setText('S' + (currentSection + 1));
@@ -545,7 +545,7 @@ function update(time, delta) {
       currentThemeColorRGB.g += (tRGB.g - currentThemeColorRGB.g) * 0.02;
       currentThemeColorRGB.b += (tRGB.b - currentThemeColorRGB.b) * 0.02;
       let themeValue = Phaser.Display.Color.GetColor(Math.floor(currentThemeColorRGB.r), Math.floor(currentThemeColorRGB.g), Math.floor(currentThemeColorRGB.b));
-      
+
       let bgC = Phaser.Display.Color.GetColor(
         Math.floor(currentThemeColorRGB.r * 0.4),
         Math.floor(currentThemeColorRGB.g * 0.4),
@@ -586,14 +586,14 @@ function update(time, delta) {
             ease: 'Sine.easeInOut'
           });
         }
-        
+
         if (hasSpikes) {
           let spikeWidth = Math.floor((platWidth * 0.5) / 20) * 20;
           if (spikeWidth < 20) spikeWidth = 20;
           let isLeft = Math.random() < 0.5;
           let spikeX = nextPlatformX + (isLeft ? (spikeWidth / 2) : (platWidth - spikeWidth / 2));
           let spikeY = platY - 20;
-          
+
           let spike = scene.add.tileSprite(spikeX, spikeY, spikeWidth, 20, 'spike');
           spikes.add(spike);
           scene.physics.add.existing(spike);
@@ -606,23 +606,23 @@ function update(time, delta) {
           let pType = Phaser.Math.Between(0, 4);
           let pu;
           if (pType === 0) { // Jump: Green Triangle UP
-              pu = scene.add.triangle(nextPlatformX + platWidth/2, platY - 40, 0, 15, 15, 15, 7.5, 0, COLORS.powerupJump);
+            pu = scene.add.triangle(nextPlatformX + platWidth / 2, platY - 40, 0, 15, 15, 15, 7.5, 0, COLORS.powerupJump);
           } else if (pType === 1) { // Invuln: Blue Circle
-              pu = scene.add.circle(nextPlatformX + platWidth/2, platY - 40, 10, COLORS.powerupInvune);
+            pu = scene.add.circle(nextPlatformX + platWidth / 2, platY - 40, 10, COLORS.powerupInvune);
           } else if (pType === 2) { // Homing mode: Cyan
-              pu = scene.add.triangle(nextPlatformX + platWidth/2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0x00ffff);
+            pu = scene.add.triangle(nextPlatformX + platWidth / 2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0x00ffff);
           } else if (pType === 3) { // Triple mode: Magenta
-              pu = scene.add.triangle(nextPlatformX + platWidth/2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0xff00ff);
+            pu = scene.add.triangle(nextPlatformX + platWidth / 2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0xff00ff);
           } else { // Auto mode: Orange
-              pu = scene.add.triangle(nextPlatformX + platWidth/2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0xff8800);
+            pu = scene.add.triangle(nextPlatformX + platWidth / 2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0xff8800);
           }
-          
+
           powerups.add(pu);
           scene.physics.add.existing(pu);
           pu.body.allowGravity = false;
           pu.body.immovable = true;
           pu.setData('type', pType);
-          
+
           scene.tweens.add({
             targets: pu,
             y: pu.y - 15,
@@ -657,28 +657,28 @@ function update(time, delta) {
 
       // Spawning Air Triangles
       if (currentSection >= 3 && airTriangles.countActive(true) < 2 && Math.random() < 0.005) {
-         let lvl = 1;
-         if (currentSection === 3) lvl = Math.random() < 0.5 ? 1 : 2;
-         else if (currentSection === 4) lvl = Math.random() < 0.3 ? 2 : 3;
+        let lvl = 1;
+        if (currentSection === 3) lvl = Math.random() < 0.5 ? 1 : 2;
+        else if (currentSection === 4) lvl = Math.random() < 0.3 ? 2 : 3;
 
-         let zones = [Phaser.Math.Between(50, 150), Phaser.Math.Between(200, 350), Phaser.Math.Between(400, 520)];
-         let spawnY = zones[Phaser.Math.Between(0, 2)];
-         
-         let wLine = scene.add.rectangle(GAME_WIDTH/2, spawnY, GAME_WIDTH, 2, 0xff0000, 0.5).setDepth(50);
-         if (scene.warningLinesGroup) scene.warningLinesGroup.add(wLine);
-         scene.time.delayedCall(800, () => wLine.destroy());
-         
-         scene.time.delayedCall(1000, () => {
-             if (gameState !== 'playing') return;
-             let tri = scene.add.triangle(850, spawnY, 0, 15, 30, 0, 30, 30, currentThemeColorRGB ? Phaser.Display.Color.GetColor(currentThemeColorRGB.r, currentThemeColorRGB.g, currentThemeColorRGB.b) : 0xffffff);
-             airTriangles.add(tri);
-             scene.physics.add.existing(tri);
-             tri.body.allowGravity = false;
-             let velX = lvl === 1 ? -300 : -500;
-             tri.body.setVelocityX(velX);
-             tri.setData('level', lvl);
-             tri.setData('fired', false);
-         });
+        let zones = [Phaser.Math.Between(50, 150), Phaser.Math.Between(200, 350), Phaser.Math.Between(400, 520)];
+        let spawnY = zones[Phaser.Math.Between(0, 2)];
+
+        let wLine = scene.add.rectangle(GAME_WIDTH / 2, spawnY, GAME_WIDTH, 2, 0xff0000, 0.5).setDepth(50);
+        if (scene.warningLinesGroup) scene.warningLinesGroup.add(wLine);
+        scene.time.delayedCall(800, () => wLine.destroy());
+
+        scene.time.delayedCall(1000, () => {
+          if (gameState !== 'playing') return;
+          let tri = scene.add.triangle(850, spawnY, 0, 15, 30, 0, 30, 30, currentThemeColorRGB ? Phaser.Display.Color.GetColor(currentThemeColorRGB.r, currentThemeColorRGB.g, currentThemeColorRGB.b) : 0xffffff);
+          airTriangles.add(tri);
+          scene.physics.add.existing(tri);
+          tri.body.allowGravity = false;
+          let velX = lvl === 1 ? -300 : -500;
+          tri.body.setVelocityX(velX);
+          tri.setData('level', lvl);
+          tri.setData('fired', false);
+        });
       }
 
       // Spawning Enemies
@@ -704,23 +704,23 @@ function update(time, delta) {
         e.setData('hp', hp);
         e.setData('level', level);
         e.setData('baseColor', color);
-        
+
         let targetX = GAME_WIDTH - 50 - Phaser.Math.Between(0, 40);
-        
+
         scene.tweens.add({
           targets: e,
           x: targetX,
           duration: 800 + Phaser.Math.Between(0, 500),
           ease: 'Power2',
           onComplete: () => {
-             scene.tweens.add({
-               targets: e,
-               y: e.y + Phaser.Math.Between(-80, 80),
-               duration: 1500,
-               yoyo: true,
-               repeat: -1,
-               ease: 'Sine.easeInOut'
-             });
+            scene.tweens.add({
+              targets: e,
+              y: e.y + Phaser.Math.Between(-80, 80),
+              duration: 1500,
+              yoyo: true,
+              repeat: -1,
+              ease: 'Sine.easeInOut'
+            });
           }
         });
 
@@ -776,14 +776,14 @@ function update(time, delta) {
 
       currentScore = Math.floor(playTime / 1000) * 10 + enemiesDefeated * 50;
       ui.scoreText.setText(`SCORE: ${currentScore}`);
-      
+
       // Invulnerability blink effect
       if (playTime < immunityTimer) {
         player.alpha = (Math.floor(playTime / 100) % 2 === 0) ? 0.3 : 1;
       } else {
         player.alpha = 1;
       }
-      
+
       // Limit X going off right
       if (player.x + player.width / 2 > GAME_WIDTH) {
         player.setX(GAME_WIDTH - player.width / 2);
@@ -791,9 +791,9 @@ function update(time, delta) {
 
       // Salto y Dash Descendente
       if (isOnGround) {
-         isDownDashing = false;
+        isDownDashing = false;
       }
-      
+
       if (consumePressed('START1') || consumePressed('P1_U')) {
         if (controls.held['P1_D'] && !isOnGround) {
           if (jumps.current > 0) {
@@ -812,41 +812,41 @@ function update(time, delta) {
       // Disparo
       let firePressed = consumePressed('P1_1');
       if (shootMode === 'auto') {
-         if (controls.held['P1_1'] && playTime > lastFireTime + 100) {
-            lastFireTime = playTime;
+        if (controls.held['P1_1'] && playTime > lastFireTime + 100) {
+          lastFireTime = playTime;
+          let bullet = scene.add.circle(player.x + 15, player.y, 6, COLORS.bullet);
+          playerBullets.add(bullet);
+          scene.physics.add.existing(bullet);
+          bullet.body.allowGravity = false;
+          bullet.body.setVelocityX(600);
+          bullet.setData('damage', 0.5);
+          bullet.setData('type', 'auto');
+        }
+      } else {
+        let cooldown = shootMode === 'triple' ? 500 : 400;
+        if (firePressed && playTime > lastFireTime + cooldown) {
+          lastFireTime = playTime;
+          if (shootMode === 'triple') {
+            for (let angle of [-15, 0, 15]) {
+              let bullet = scene.add.circle(player.x + 15, player.y, 6, COLORS.bullet);
+              playerBullets.add(bullet);
+              scene.physics.add.existing(bullet);
+              bullet.body.allowGravity = false;
+              let rad = Phaser.Math.DegToRad(angle);
+              bullet.body.setVelocity(600 * Math.cos(rad), 600 * Math.sin(rad));
+              bullet.setData('damage', 1);
+              bullet.setData('type', 'triple');
+            }
+          } else {
             let bullet = scene.add.circle(player.x + 15, player.y, 6, COLORS.bullet);
             playerBullets.add(bullet);
             scene.physics.add.existing(bullet);
             bullet.body.allowGravity = false;
             bullet.body.setVelocityX(600);
-            bullet.setData('damage', 0.5);
-            bullet.setData('type', 'auto');
-         }
-      } else {
-         let cooldown = shootMode === 'triple' ? 500 : 400;
-         if (firePressed && playTime > lastFireTime + cooldown) {
-            lastFireTime = playTime;
-            if (shootMode === 'triple') {
-                for (let angle of [-15, 0, 15]) {
-                   let bullet = scene.add.circle(player.x + 15, player.y, 6, COLORS.bullet);
-                   playerBullets.add(bullet);
-                   scene.physics.add.existing(bullet);
-                   bullet.body.allowGravity = false;
-                   let rad = Phaser.Math.DegToRad(angle);
-                   bullet.body.setVelocity(600 * Math.cos(rad), 600 * Math.sin(rad));
-                   bullet.setData('damage', 1);
-                   bullet.setData('type', 'triple');
-                }
-            } else {
-                let bullet = scene.add.circle(player.x + 15, player.y, 6, COLORS.bullet);
-                playerBullets.add(bullet);
-                scene.physics.add.existing(bullet);
-                bullet.body.allowGravity = false;
-                bullet.body.setVelocityX(600);
-                bullet.setData('damage', 1);
-                bullet.setData('type', 'homing');
-            }
-         }
+            bullet.setData('damage', 1);
+            bullet.setData('type', 'homing');
+          }
+        }
       }
 
       // Update Enemy behavior and Bullets
@@ -854,11 +854,11 @@ function update(time, delta) {
         let lastFire = e.getData('lastFire');
         let level = e.getData('level') || 1;
         let cooldown = level === 1 ? 2500 : 3000;
-        
+
         if (playTime > lastFire + cooldown) {
           let jitter = level === 1 ? Phaser.Math.Between(-500, 500) : 0;
           e.setData('lastFire', playTime + jitter);
-          
+
           let spawnEnemyBullet = (x, y, vx, vy) => {
             if (!scene || !scene.physics || !e.active) return;
             let bullet = scene.add.rectangle(x, y, 12, 12, COLORS.enemyBullet);
@@ -873,12 +873,12 @@ function update(time, delta) {
           } else if (level === 2) {
             spawnEnemyBullet(e.x - 18, e.y, -350, 0);
             scene.time.delayedCall(300, () => {
-               if (e.active) spawnEnemyBullet(e.x - 18, e.y, -350, 0);
+              if (e.active) spawnEnemyBullet(e.x - 18, e.y, -350, 0);
             });
           } else if (level === 3) {
             for (let ang of [-10, 0, 10]) {
-               let rad = Phaser.Math.DegToRad(ang + 180);
-               spawnEnemyBullet(e.x - 22, e.y, Math.cos(rad) * 350, Math.sin(rad) * 350);
+              let rad = Phaser.Math.DegToRad(ang + 180);
+              spawnEnemyBullet(e.x - 22, e.y, Math.cos(rad) * 350, Math.sin(rad) * 350);
             }
           }
         }
@@ -926,18 +926,18 @@ function update(time, delta) {
           b.destroy();
         }
       });
-      
+
       airTriangles.getChildren().forEach(tri => {
-          if (tri.x < -50) tri.destroy();
-          else if (tri.getData('level') === 3 && !tri.getData('fired') && tri.x < 600) {
-              tri.setData('fired', true);
-              let bullet = scene.add.rectangle(tri.x, tri.y, 12, 12, COLORS.enemyBullet);
-              enemyBullets.add(bullet);
-              scene.physics.add.existing(bullet);
-              bullet.body.allowGravity = false;
-              let angle = Phaser.Math.Angle.Between(tri.x, tri.y, player.x, player.y);
-              bullet.body.setVelocity(Math.cos(angle) * 450, Math.sin(angle) * 450);
-          }
+        if (tri.x < -50) tri.destroy();
+        else if (tri.getData('level') === 3 && !tri.getData('fired') && tri.x < 600) {
+          tri.setData('fired', true);
+          let bullet = scene.add.rectangle(tri.x, tri.y, 12, 12, COLORS.enemyBullet);
+          enemyBullets.add(bullet);
+          scene.physics.add.existing(bullet);
+          bullet.body.allowGravity = false;
+          let angle = Phaser.Math.Angle.Between(tri.x, tri.y, player.x, player.y);
+          bullet.body.setVelocity(Math.cos(angle) * 450, Math.sin(angle) * 450);
+        }
       });
 
       // Recarga de saltos
@@ -973,16 +973,16 @@ function update(time, delta) {
       ui.gameOverText.setVisible(false);
       ui.gameOverInstructions.setVisible(false);
       scene.physics.resume();
-      
+
       // Restart position
       player.setPosition(200, 300);
       player.body.setVelocity(0, 0);
 
       if (ui.jumpBars.length > 3) {
-          for (let i = 3; i < ui.jumpBars.length; i++) {
-              ui.jumpBars[i].destroy();
-          }
-          ui.jumpBars = ui.jumpBars.slice(0, 3);
+        for (let i = 3; i < ui.jumpBars.length; i++) {
+          ui.jumpBars[i].destroy();
+        }
+        ui.jumpBars = ui.jumpBars.slice(0, 3);
       }
       jumps.max = 3;
       jumps.current = jumps.max;
