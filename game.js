@@ -124,8 +124,40 @@ let dashCooldownTimer = 0;
 let isDownDashing = false;
 let dashDirection = 0;
 
+let enemiesDefeated = 0;
+let currentScore = 0;
+
 function isMechanicActive(name) {
   return SECTIONS[currentSection].mechanics.includes(name);
+}
+
+async function updateLeaderboard(score) {
+  if (!window.platanusArcadeStorage) return;
+  
+  ui.leaderboardText.setText('Saving score...');
+  ui.leaderboardText.setVisible(true);
+  
+  try {
+    let result = await window.platanusArcadeStorage.get('chromadash-leaderboard');
+    let top = [];
+    if (result && result.found && result.value && Array.isArray(result.value.top)) {
+      top = result.value.top;
+    }
+    
+    top.push({ score: score });
+    top.sort((a, b) => b.score - a.score);
+    if (top.length > 5) top = top.slice(0, 5);
+    
+    await window.platanusArcadeStorage.set('chromadash-leaderboard', { top: top });
+    
+    let lbText = 'TOP 5 SCORES:\n\n';
+    for (let i = 0; i < top.length; i++) {
+        lbText += `${i+1}. ${top[i].score}\n`;
+    }
+    ui.leaderboardText.setText(lbText);
+  } catch (err) {
+    ui.leaderboardText.setText('Leaderboard offline');
+  }
 }
 
 function playerDie(scene, type) {
@@ -135,6 +167,8 @@ function playerDie(scene, type) {
     scene.physics.pause();
     ui.gameOverText.setVisible(true);
     ui.gameOverInstructions.setVisible(true);
+    
+    updateLeaderboard(currentScore);
   }
 }
 
@@ -240,6 +274,7 @@ function create() {
   scene.physics.add.overlap(player, enemies, (pl, en) => {
     if (isDownDashing && (pl.body.velocity.y > 10 || pl.y < en.y)) {
       en.destroy();
+      enemiesDefeated++;
       pl.body.setVelocityY(-300);
       isDownDashing = false;
     } else {
@@ -257,6 +292,7 @@ function create() {
     
     if (hp <= 0) {
       enemy.destroy();
+      enemiesDefeated++;
     } else {
       enemy.setFillStyle(0xff0000);
       scene.time.delayedCall(100, () => {
@@ -318,6 +354,22 @@ function create() {
     color: '#00ffff',
     fontStyle: 'bold'
   }).setOrigin(1, 0.5).setDepth(202);
+
+  // Score HUD
+  ui.scoreText = scene.add.text(20, 20, 'SCORE: 0', {
+    fontSize: '24px',
+    fontFamily: 'Arial',
+    color: '#ffffff',
+    fontStyle: 'bold'
+  }).setOrigin(0, 0).setDepth(202);
+
+  // Leaderboard Text
+  ui.leaderboardText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 60, '', {
+    fontSize: '18px',
+    fontFamily: 'Arial',
+    color: '#aaaaaa',
+    align: 'center'
+  }).setOrigin(0.5).setDepth(101).setVisible(false);
 
   // Input Handling
   const onKeyDown = (event) => {
@@ -391,6 +443,11 @@ function update(time, delta) {
       dashActiveTimer = 0;
       dashCooldownTimer = 0;
       isDownDashing = false;
+
+      enemiesDefeated = 0;
+      currentScore = 0;
+      ui.scoreText.setText('SCORE: 0');
+      ui.leaderboardText.setVisible(false);
 
       currentSection = 0;
       sectionProgress = 0;
@@ -649,6 +706,9 @@ function update(time, delta) {
       if (player.y > GAME_HEIGHT || player.x + player.width / 2 < 0) {
         playerDie(scene, 'fall');
       }
+
+      currentScore = Math.floor(playTime / 1000) * 10 + enemiesDefeated * 50;
+      ui.scoreText.setText(`SCORE: ${currentScore}`);
       
       // Invulnerability blink effect
       if (playTime < immunityTimer) {
@@ -832,6 +892,11 @@ function update(time, delta) {
       dashActiveTimer = 0;
       dashCooldownTimer = 0;
       isDownDashing = false;
+
+      enemiesDefeated = 0;
+      currentScore = 0;
+      ui.scoreText.setText('SCORE: 0');
+      ui.leaderboardText.setVisible(false);
 
       currentSection = 0;
       sectionProgress = 0;

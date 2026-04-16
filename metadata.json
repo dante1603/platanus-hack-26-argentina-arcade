@@ -1,5 +1,5 @@
 {
-  "game_name": "<FILL THIS>",
-  "description": "<FILL THIS>",
-  "player_mode": "two_player"
+  "game_name": "Chroma Dash",
+  "description": "Usa tus reflejos veloces, dash táctico y armas adaptables (homing, triple fan y auto) para sobrevivir las secciones cambiantes y derrotar la haine invasora pura.",
+  "player_mode": "single_player"
 }
