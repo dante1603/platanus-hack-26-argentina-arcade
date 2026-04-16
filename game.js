@@ -102,6 +102,7 @@ let nextPlatformX = 0;
 let playTime = 0;
 let immunityTimer = 0;
 let jumps = { current: 3, max: 3, timer: 0 };
+let health = { current: 3, max: 3 };
 let shootMode = 'homing';
 
 const SECTIONS = [
@@ -140,6 +141,12 @@ let bossSection = 0;
 
 function isMechanicActive(name) {
   return SECTIONS[currentSection].mechanics.includes(name);
+}
+
+function updateHealthHUD() {
+  for (let i = 0; i < ui.healthBars.length; i++) {
+    ui.healthBars[i].setFillStyle(i < health.current ? 0xff3333 : 0x555555);
+  }
 }
 
 function spawnBoss(scene, sectionIdx) {
@@ -210,6 +217,8 @@ function killBoss(scene) {
       gameSpeed = Math.max(SECTIONS[currentSection].speedFloor, gameSpeed * 0.8);
       pendingBonusPowerup = true;
     }
+    health.current = health.max;
+    updateHealthHUD();
     let flash2 = scene.add.graphics();
     flash2.fillStyle(SECTIONS[currentSection].color, 1);
     flash2.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
@@ -304,14 +313,20 @@ async function updateLeaderboard(score) {
 }
 
 function playerDie(scene, type) {
-  if (gameState === 'playing') {
-    if ((type === 'enemy' || type === 'enemyBullet' || type === 'airTriangle') && playTime < immunityTimer) return;
+  if (gameState !== 'playing') return;
+  if ((type === 'enemy' || type === 'enemyBullet' || type === 'airTriangle') && playTime < immunityTimer) return;
+  health.current--;
+  updateHealthHUD();
+  if (health.current <= 0) {
     gameState = 'gameover';
     scene.physics.pause();
     ui.gameOverText.setVisible(true);
     ui.gameOverInstructions.setVisible(true);
-
     updateLeaderboard(currentScore);
+  } else {
+    immunityTimer = playTime + 2000;
+    let flash = scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0xff0000, 0.25).setOrigin(0, 0).setDepth(250);
+    scene.tweens.add({ targets: flash, alpha: 0, duration: 300, onComplete: () => flash.destroy() });
   }
 }
 
@@ -476,6 +491,19 @@ function create() {
       } else if (pt === 4) {
         shootMode = 'auto';
         ui.shootModeText.setText('◆ AUTO').setColor('#ff8800');
+      } else if (pt === 5) {
+        if (health.max < 6) {
+          health.max++;
+          let hb = scene.add.star(GAME_WIDTH / 2 - (health.max - 1) * 14 + (health.max - 1) * 28, GAME_HEIGHT - 14, 4, 5, 10, 0xff3333);
+          hb.setDepth(202);
+          ui.healthBars.push(hb);
+          // Reposition all health bars for new max
+          for (let i = 0; i < ui.healthBars.length; i++) {
+            ui.healthBars[i].setX(GAME_WIDTH / 2 - (health.max - 1) * 14 + i * 28);
+          }
+        }
+        health.current = health.max;
+        updateHealthHUD();
       }
       pu.destroy();
     }
@@ -504,6 +532,14 @@ function create() {
     let bar = scene.add.rectangle(20 + i * 28, GAME_HEIGHT - 30, 24, 10, COLORS.powerupJump);
     bar.setOrigin(0, 0.5);
     ui.jumpBars.push(bar);
+  }
+
+  // Health Bars (HUD) — red diamonds centered at bottom
+  ui.healthBars = [];
+  for (let i = 0; i < health.max; i++) {
+    let hb = scene.add.star(GAME_WIDTH / 2 - (health.max - 1) * 14 + i * 28, GAME_HEIGHT - 14, 4, 5, 10, 0xff3333);
+    hb.setDepth(202);
+    ui.healthBars.push(hb);
   }
 
   // Shoot Mode HUD
@@ -596,6 +632,16 @@ function update(time, delta) {
       jumps.max = 3;
       jumps.current = jumps.max;
       jumps.timer = 0;
+      if (ui.healthBars.length > 3) {
+        for (let i = 3; i < ui.healthBars.length; i++) ui.healthBars[i].destroy();
+        ui.healthBars = ui.healthBars.slice(0, 3);
+      }
+      health.max = 3;
+      health.current = 3;
+      for (let i = 0; i < ui.healthBars.length; i++) {
+        ui.healthBars[i].setX(GAME_WIDTH / 2 - (health.max - 1) * 14 + i * 28);
+      }
+      updateHealthHUD();
       gameSpeed = 150;
       nextPlatformX = GAME_WIDTH + 200;
       playTime = 0;
@@ -673,6 +719,8 @@ function update(time, delta) {
           sectionProgress = 0;
           currentSection++;
           pendingBonusPowerup = true;
+          health.current = health.max;
+          updateHealthHUD();
 
           let flash = scene.add.graphics();
           flash.fillStyle(SECTIONS[currentSection].color, 1);
@@ -766,18 +814,24 @@ function update(time, delta) {
           spike.body.setOffset(2, 4);
         } else if (!isMoving && (pendingBonusPowerup || Math.random() < 0.15)) {
           pendingBonusPowerup = false;
-          let pType = Phaser.Math.Between(0, 4);
+          let pType = Phaser.Math.Between(0, 5);
+          if (pType === 0 && jumps.max >= 6) pType = 1;
+          if (pType === 5 && health.max >= 6) pType = 1;
           let pu;
+          let puX = nextPlatformX + platWidth / 2;
+          let puY = platY - 40;
           if (pType === 0) { // Jump: Green Triangle UP
-            pu = scene.add.triangle(nextPlatformX + platWidth / 2, platY - 40, 0, 15, 15, 15, 7.5, 0, COLORS.powerupJump);
+            pu = scene.add.triangle(puX, puY, 0, 15, 15, 15, 7.5, 0, COLORS.powerupJump);
           } else if (pType === 1) { // Invuln: Blue Circle
-            pu = scene.add.circle(nextPlatformX + platWidth / 2, platY - 40, 10, COLORS.powerupInvune);
+            pu = scene.add.circle(puX, puY, 10, COLORS.powerupInvune);
           } else if (pType === 2) { // Homing mode: Cyan
-            pu = scene.add.triangle(nextPlatformX + platWidth / 2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0x00ffff);
+            pu = scene.add.triangle(puX, puY, 0, 0, 15, 0, 7.5, 15, 0x00ffff);
           } else if (pType === 3) { // Triple mode: Magenta
-            pu = scene.add.triangle(nextPlatformX + platWidth / 2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0xff00ff);
-          } else { // Auto mode: Orange
-            pu = scene.add.triangle(nextPlatformX + platWidth / 2, platY - 40, 0, 0, 15, 0, 7.5, 15, 0xff8800);
+            pu = scene.add.triangle(puX, puY, 0, 0, 15, 0, 7.5, 15, 0xff00ff);
+          } else if (pType === 4) { // Auto mode: Orange
+            pu = scene.add.triangle(puX, puY, 0, 0, 15, 0, 7.5, 15, 0xff8800);
+          } else { // Health +1: Red diamond (4-pointed star)
+            pu = scene.add.star(puX, puY, 4, 5, 12, 0xff3333);
           }
 
           powerups.add(pu);
@@ -1170,6 +1224,16 @@ function update(time, delta) {
       jumps.max = 3;
       jumps.current = jumps.max;
       jumps.timer = 0;
+      if (ui.healthBars.length > 3) {
+        for (let i = 3; i < ui.healthBars.length; i++) ui.healthBars[i].destroy();
+        ui.healthBars = ui.healthBars.slice(0, 3);
+      }
+      health.max = 3;
+      health.current = 3;
+      for (let i = 0; i < ui.healthBars.length; i++) {
+        ui.healthBars[i].setX(GAME_WIDTH / 2 - (health.max - 1) * 14 + i * 28);
+      }
+      updateHealthHUD();
       gameSpeed = 150;
       nextPlatformX = GAME_WIDTH + 200;
       playTime = 0;
