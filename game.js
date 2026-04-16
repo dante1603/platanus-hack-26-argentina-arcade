@@ -103,6 +103,24 @@ let immunityTimer = 0;
 let rapidFireTimer = 0;
 let jumps = { current: 3, max: 3, timer: 0 };
 
+const SECTIONS = [
+  { color: 0x002244, duration: 20000, speedFloor: 150, mechanics: [] },
+  { color: 0x884400, duration: 25000, speedFloor: 170, mechanics: ['spikes', 'enemies'] },
+  { color: 0x666600, duration: 30000, speedFloor: 190, mechanics: ['spikes', 'enemies', 'moving'] },
+  { color: 0x004400, duration: 35000, speedFloor: 210, mechanics: ['spikes', 'enemies', 'moving', 'triangles'] },
+  { color: 0x440000, duration: 40000, speedFloor: 230, mechanics: ['spikes', 'enemies', 'moving', 'triangles'] }
+];
+
+let currentSection = 0;
+let sectionProgress = 0.0;
+let pendingBonusPowerup = false;
+let sectionTimer = 0;
+let currentThemeColorRGB = null;
+
+function isMechanicActive(name) {
+  return SECTIONS[currentSection].mechanics.includes(name);
+}
+
 function playerDie(scene, type) {
   if (gameState === 'playing') {
     if ((type === 'enemy' || type === 'enemyBullet') && playTime < immunityTimer) return;
@@ -119,9 +137,19 @@ function create() {
   const scene = this;
 
   // Background
-  const bg = scene.add.graphics();
-  bg.fillStyle(COLORS.background, 1);
-  bg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+  currentThemeColorRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[0].color);
+  let initialBgC = Phaser.Display.Color.Darken(Phaser.Display.Color.ValueToColor(SECTIONS[0].color), 50).color;
+  ui.bgRect = scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, initialBgC).setOrigin(0, 0).setDepth(0);
+
+  // Section HUD
+  ui.sectionBarBg = scene.add.rectangle(0, 0, GAME_WIDTH, 12, 0x333333).setOrigin(0, 0).setDepth(200);
+  ui.sectionBarFill = scene.add.rectangle(0, 0, 0, 12, SECTIONS[0].color).setOrigin(0, 0).setDepth(201);
+  ui.sectionText = scene.add.text(GAME_WIDTH - 10, 6, 'S1', {
+    fontSize: '12px',
+    fontFamily: 'Arial',
+    color: '#ffffff',
+    fontStyle: 'bold'
+  }).setOrigin(1, 0.5).setDepth(202);
 
   // Start Screen UI
   ui.startText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 3, 'INFINITE RUNNER PLATFORMER', {
@@ -318,9 +346,16 @@ function update(time, delta) {
       gameSpeed = 150;
       nextPlatformX = GAME_WIDTH + 200;
       playTime = 0;
+      lastFireTime = 0;
       nextEnemyTime = 3000;
       immunityTimer = 0;
       rapidFireTimer = 0;
+
+      currentSection = 0;
+      sectionProgress = 0;
+      sectionTimer = 0;
+      pendingBonusPowerup = false;
+      currentThemeColorRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[0].color);
 
       // Reset platforms and spikes
       platforms.clear(true, true);
@@ -348,6 +383,48 @@ function update(time, delta) {
       playTime += delta;
       let isOnGround = player.body.touching.down;
 
+      // Section Progress
+      sectionTimer += delta;
+      sectionProgress = sectionTimer / SECTIONS[currentSection].duration;
+      
+      if (sectionProgress >= 1.0) {
+        if (currentSection < 4) {
+          sectionTimer -= SECTIONS[currentSection].duration;
+          sectionProgress = 0;
+          currentSection++;
+          pendingBonusPowerup = true;
+          
+          let flash = scene.add.graphics();
+          flash.fillStyle(SECTIONS[currentSection].color, 1);
+          flash.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+          flash.setDepth(200);
+          scene.tweens.add({
+            targets: flash,
+            alpha: 0,
+            duration: 300,
+            onComplete: () => flash.destroy()
+          });
+          
+          gameSpeed = Math.max(SECTIONS[currentSection].speedFloor, gameSpeed * 0.8);
+        } else {
+          sectionProgress = 1.0;
+        }
+      }
+      
+      ui.sectionBarFill.width = GAME_WIDTH * Math.min(sectionProgress, 1.0);
+      ui.sectionBarFill.setFillStyle(SECTIONS[currentSection].color);
+      ui.sectionText.setText('S' + (currentSection + 1));
+
+      // Color Transition
+      let tRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[currentSection].color);
+      currentThemeColorRGB.r += (tRGB.r - currentThemeColorRGB.r) * 0.02;
+      currentThemeColorRGB.g += (tRGB.g - currentThemeColorRGB.g) * 0.02;
+      currentThemeColorRGB.b += (tRGB.b - currentThemeColorRGB.b) * 0.02;
+      let themeValue = Phaser.Display.Color.GetColor(Math.floor(currentThemeColorRGB.r), Math.floor(currentThemeColorRGB.g), Math.floor(currentThemeColorRGB.b));
+      
+      let bgC = Phaser.Display.Color.Darken(Phaser.Display.Color.ValueToColor(themeValue), 50).color;
+      ui.bgRect.setFillStyle(bgC);
+
       // Increase Speed (max 450, +5 per 10s => +0.5 per s)
       gameSpeed += 0.5 * (delta / 1000);
       if (gameSpeed > 450) gameSpeed = 450;
@@ -357,11 +434,12 @@ function update(time, delta) {
         let platY = Phaser.Math.Between(250, 500);
         let platWidth = Phaser.Math.Between(150, 300);
         let randSubtype = Math.random();
-        let hasSpikes = randSubtype < 0.25;
-        let isMoving = randSubtype >= 0.25 && randSubtype < 0.5;
+        let hasSpikes = randSubtype < 0.25 && isMechanicActive('spikes');
+        let isMoving = randSubtype >= 0.25 && randSubtype < 0.5 && isMechanicActive('moving');
 
-        let platColor = isMoving ? COLORS.platformMoving : COLORS.platform;
+        let platColor = isMoving ? COLORS.platformMoving : themeValue;
         let plat = scene.add.rectangle(nextPlatformX + platWidth / 2, platY, platWidth, 20, platColor);
+        plat.setData('isMoving', isMoving);
         platforms.add(plat);
         scene.physics.add.existing(plat);
         plat.body.allowGravity = false;
@@ -395,7 +473,8 @@ function update(time, delta) {
           spike.body.immovable = true;
           spike.body.setSize(spikeWidth - 4, 16);
           spike.body.setOffset(2, 4);
-        } else if (!isMoving && Math.random() < 0.15) {
+        } else if (!isMoving && (pendingBonusPowerup || Math.random() < 0.15)) {
+          pendingBonusPowerup = false;
           let pType = Phaser.Math.Between(0, 2);
           let color = pType === 0 ? COLORS.powerupJump : (pType === 1 ? COLORS.powerupInvune : COLORS.powerupRapid);
           
@@ -425,6 +504,7 @@ function update(time, delta) {
 
       // Move and recycle platforms and spikes
       platforms.getChildren().forEach(plat => {
+        if (!plat.getData('isMoving')) plat.setFillStyle(themeValue);
         plat.body.setVelocityX(-gameSpeed);
         if (plat.x + plat.width / 2 < 0) {
           plat.destroy();
@@ -442,7 +522,7 @@ function update(time, delta) {
       nextPlatformX -= gameSpeed * (delta / 1000);
 
       // Spawning Enemies
-      if (playTime > nextEnemyTime && enemies.countActive(true) < 4) {
+      if (playTime > nextEnemyTime && enemies.countActive(true) < 4 && isMechanicActive('enemies')) {
         let e = scene.add.circle(GAME_WIDTH + 50, Phaser.Math.Between(150, 450), 14, COLORS.enemy);
         enemies.add(e);
         scene.physics.add.existing(e);
@@ -623,9 +703,16 @@ function update(time, delta) {
       gameSpeed = 150;
       nextPlatformX = GAME_WIDTH + 200;
       playTime = 0;
+      lastFireTime = 0;
       nextEnemyTime = 3000;
       immunityTimer = 0;
       rapidFireTimer = 0;
+
+      currentSection = 0;
+      sectionProgress = 0;
+      sectionTimer = 0;
+      pendingBonusPowerup = false;
+      currentThemeColorRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[0].color);
 
       // Reset platforms and spikes
       platforms.clear(true, true);
