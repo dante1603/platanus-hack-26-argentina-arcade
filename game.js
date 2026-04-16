@@ -136,20 +136,27 @@ let bossHp = 0;
 let bossHpMax = 30;
 let bossPattern = 0;
 let bossNextAction = 0;
+let bossSection = 0;
 
 function isMechanicActive(name) {
   return SECTIONS[currentSection].mechanics.includes(name);
 }
 
-function spawnBoss(scene) {
+function spawnBoss(scene, sectionIdx) {
+  bossSection = sectionIdx;
   bossMode = true;
   bossEntering = true;
+  let isBoss2 = sectionIdx === 4;
+  bossHpMax = isBoss2 ? 60 : 30;
   bossHp = bossHpMax;
   bossPattern = 0;
   bossNextAction = 0;
   enemies.clear(true, true);
   enemyBullets.clear(true, true);
-  boss = scene.add.rectangle(GAME_WIDTH + 60, GAME_HEIGHT / 2 - 50, 80, 80, 0xff8800);
+  let w = isBoss2 ? 100 : 80;
+  let h = isBoss2 ? 100 : 80;
+  let color = isBoss2 ? 0xff2200 : 0xff8800;
+  boss = scene.add.rectangle(GAME_WIDTH + 60, GAME_HEIGHT / 2 - 50, w, h, color);
   boss.setDepth(20);
   scene.tweens.add({
     targets: boss,
@@ -190,11 +197,19 @@ function killBoss(scene) {
     bossMode = false;
     bossDying = false;
     enemyBullets.clear(true, true);
-    currentSection++;
-    pendingBonusPowerup = true;
-    sectionTimer = 0;
-    sectionProgress = 0;
-    gameSpeed = Math.max(SECTIONS[currentSection].speedFloor, gameSpeed * 0.8);
+    if (bossSection === 4) {
+      currentSection = 0;
+      sectionTimer = 0;
+      sectionProgress = 0;
+      gameSpeed = SECTIONS[0].speedFloor + 50;
+      pendingBonusPowerup = true;
+    } else {
+      currentSection++;
+      sectionTimer = 0;
+      sectionProgress = 0;
+      gameSpeed = Math.max(SECTIONS[currentSection].speedFloor, gameSpeed * 0.8);
+      pendingBonusPowerup = true;
+    }
     let flash2 = scene.add.graphics();
     flash2.fillStyle(SECTIONS[currentSection].color, 1);
     flash2.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
@@ -205,7 +220,8 @@ function killBoss(scene) {
 
 function executeBossPattern(scene) {
   if (!boss || !boss.active || bossDying) return;
-  let pat = bossPattern % 3;
+  let numPatterns = bossSection === 4 ? 4 : 3;
+  let pat = bossPattern % numPatterns;
   let spawnBB = (x, y, vx, vy) => {
     if (!bossMode || bossDying || !scene.physics) return;
     let b = scene.add.circle(x, y, 9, 0xff2200).setDepth(50);
@@ -230,7 +246,7 @@ function executeBossPattern(scene) {
       });
     });
     bossNextAction = playTime + 4200;
-  } else {
+  } else if (pat === 2) {
     let positions = [];
     for (let i = 0; i < 3; i++) {
       positions.push({ x: Phaser.Math.Between(80, 500), y: Phaser.Math.Between(80, 500) });
@@ -247,6 +263,13 @@ function executeBossPattern(scene) {
       });
     });
     bossNextAction = playTime + 4500;
+  } else {
+    // Spiral: 8 projectiles expanding outward in circle (boss 2 only)
+    for (let i = 0; i < 8; i++) {
+      let a = (i / 8) * Math.PI * 2;
+      spawnBB(boss.x, boss.y, Math.cos(a) * 320, Math.sin(a) * 320);
+    }
+    bossNextAction = playTime + 4000;
   }
   bossPattern++;
 }
@@ -606,6 +629,7 @@ function update(time, delta) {
       bossHp = 0;
       bossPattern = 0;
       bossNextAction = 0;
+      bossSection = 0;
 
       // Reset platforms and spikes
       platforms.clear(true, true);
@@ -640,10 +664,10 @@ function update(time, delta) {
       sectionProgress = sectionTimer / SECTIONS[currentSection].duration;
 
       if (sectionProgress >= 1.0) {
-        if (currentSection === 1 && !bossMode && !bossDying) {
+        if ((currentSection === 1 || currentSection === 4) && !bossMode && !bossDying) {
           sectionProgress = 1.0;
           sectionTimer = SECTIONS[currentSection].duration;
-          if (!boss && !bossEntering) spawnBoss(scene);
+          if (!boss && !bossEntering) spawnBoss(scene, currentSection);
         } else if (currentSection < 4 && !bossMode) {
           sectionTimer -= SECTIONS[currentSection].duration;
           sectionProgress = 0;
@@ -700,7 +724,8 @@ function update(time, delta) {
         let platY = Phaser.Math.Between(250, 500);
         let platWidth = Phaser.Math.Between(150, 300);
         let randSubtype = Math.random();
-        let hasSpikes = randSubtype < 0.25 && isMechanicActive('spikes') && !bossMode;
+        let boss2Active = bossMode && bossSection === 4;
+        let hasSpikes = randSubtype < 0.25 && isMechanicActive('spikes') && (!bossMode || boss2Active);
         let isMoving = randSubtype >= 0.25 && randSubtype < 0.5 && isMechanicActive('moving') && !bossMode;
 
         let platColor = isMoving ? COLORS.platformMoving : themeValue;
@@ -794,7 +819,7 @@ function update(time, delta) {
       nextPlatformX -= gameSpeed * (delta / 1000);
 
       // Spawning Air Triangles
-      if (currentSection >= 3 && !bossMode && airTriangles.countActive(true) < 2 && Math.random() < 0.005) {
+      if (currentSection >= 3 && (!bossMode || bossSection === 4) && airTriangles.countActive(true) < 2 && Math.random() < 0.005) {
         let lvl = 1;
         if (currentSection === 3) lvl = Math.random() < 0.5 ? 1 : 2;
         else if (currentSection === 4) lvl = Math.random() < 0.3 ? 2 : 3;
@@ -1046,7 +1071,9 @@ function update(time, delta) {
         if (b.getData('type') === 'homing') {
           let closestDest = null;
           let closestDist = Infinity;
-          enemies.getChildren().forEach(e => {
+          let homingTargets = [...enemies.getChildren()];
+          if (bossMode && boss && boss.active && !bossDying) homingTargets.push(boss);
+          homingTargets.forEach(e => {
             let dist = Phaser.Math.Distance.Between(b.x, b.y, e.x, e.y);
             if (dist < closestDist && e.x > b.x) {
               closestDist = dist;
@@ -1176,6 +1203,7 @@ function update(time, delta) {
       bossHp = 0;
       bossPattern = 0;
       bossNextAction = 0;
+      bossSection = 0;
 
       // Reset platforms and spikes
       platforms.clear(true, true);
