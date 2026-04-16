@@ -285,6 +285,33 @@ function executeBossPattern(scene) {
   bossPattern++;
 }
 
+function drawNeonEnemy(e, time) {
+  e.clear();
+  e.rotation += e.velRotacion || 0.02;
+  let osc = Math.sin((time * 0.003) + (e.faseTiempo || 0)) * 4;
+  let r = (e.radioActual || e.getData('radioBase') || 14) + osc;
+  let puntos = e.getData('puntos') || 3;
+  let nc = e.getData('neonColor') || 0xff0044;
+  let bx = e.brilloExtra || 1;
+  let verts = [];
+  for (let i = 0; i < puntos; i++) {
+    let a = -Math.PI / 2 + (i / puntos) * Math.PI * 2;
+    verts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+  }
+  e.lineStyle(12, nc, 0.2 * bx);
+  e.strokePoints(verts, true, true);
+  e.lineStyle(6, nc, 0.6 * bx);
+  e.strokePoints(verts, true, true);
+  e.lineStyle(2, 0xffffff, 1);
+  e.strokePoints(verts, true, true);
+  for (let v of verts) {
+    e.fillStyle(nc, 0.5 * bx);
+    e.fillCircle(v.x, v.y, 5);
+    e.fillStyle(0xffffff, 1);
+    e.fillCircle(v.x, v.y, 2);
+  }
+}
+
 async function updateLeaderboard(score) {
   if (!window.platanusArcadeStorage) return;
 
@@ -464,9 +491,9 @@ function create() {
       enemy.destroy();
       enemiesDefeated++;
     } else {
-      enemy.setFillStyle(0xffffff);
+      enemy.brilloExtra = 5;
       scene.time.delayedCall(100, () => {
-        if (enemy.active) enemy.setFillStyle(enemy.getData('baseColor') || COLORS.enemy);
+        if (enemy.active) enemy.brilloExtra = 1;
       });
     }
   });
@@ -912,20 +939,29 @@ function update(time, delta) {
 
         let r = 14;
         let hp = 2;
-        let color = COLORS.enemy;
-        if (level === 2) { r = 18; hp = 4; color = 0xff3333; }
-        else if (level === 3) { r = 22; hp = 6; color = 0xff5500; }
+        let neonColor = 0xff0044;
+        if (level === 2) { r = 18; hp = 4; neonColor = 0xff3333; }
+        else if (level === 3) { r = 22; hp = 6; neonColor = 0xff6600; }
 
-        let e = scene.add.circle(GAME_WIDTH + 50, Phaser.Math.Between(150, 450), r, color);
-        if (level === 3) e.setStrokeStyle(2, 0xffaa00);
+        let e = scene.add.graphics({ x: GAME_WIDTH + 50, y: Phaser.Math.Between(150, 450) });
+        e.setBlendMode(Phaser.BlendModes.ADD);
+        e.setDepth(10);
+        e.radioActual = r;
+        e.brilloExtra = 1;
+        e.velRotacion = (Math.random() > 0.5 ? 1 : -1) * 0.02;
+        e.faseTiempo = Math.random() * 100;
 
         enemies.add(e);
         scene.physics.add.existing(e);
         e.body.allowGravity = false;
+        e.body.setSize(r * 2, r * 2);
+        e.body.offset.set(-r, -r);
         e.setData('lastFire', playTime + Phaser.Math.Between(1000, 2000));
         e.setData('hp', hp);
         e.setData('level', level);
-        e.setData('baseColor', color);
+        e.setData('radioBase', r);
+        e.setData('neonColor', neonColor);
+        e.setData('puntos', 2 + level);
 
         let targetX = GAME_WIDTH - 50 - Phaser.Math.Between(0, 40);
 
@@ -1073,17 +1109,24 @@ function update(time, delta) {
 
       // Update Enemy behavior and Bullets
       enemies.getChildren().forEach(e => {
+        drawNeonEnemy(e, time);
+
         let lastFire = e.getData('lastFire');
         let level = e.getData('level') || 1;
         let cooldown = level === 1 ? 2500 : 3000;
 
         if (playTime > lastFire + cooldown) {
+          // Fire animation synchronized with bullet spawn
+          let rb = e.getData('radioBase') || 14;
+          scene.tweens.add({ targets: e, radioActual: rb * 1.5, brilloExtra: 3.5, duration: 100, ease: 'Sine.easeOut', yoyo: true, hold: 50 });
+
           let jitter = level === 1 ? Phaser.Math.Between(-500, 500) : 0;
           e.setData('lastFire', playTime + jitter);
 
           let spawnEnemyBullet = (x, y, vx, vy) => {
             if (!scene || !scene.physics || !e.active) return;
-            let bullet = scene.add.rectangle(x, y, 12, 12, COLORS.enemyBullet);
+            let bullet = scene.add.rectangle(x, y, 10, 10, 0xffffff);
+            bullet.setBlendMode(Phaser.BlendModes.ADD);
             enemyBullets.add(bullet);
             scene.physics.add.existing(bullet);
             bullet.body.allowGravity = false;
@@ -1106,10 +1149,12 @@ function update(time, delta) {
         }
       });
       enemyBullets.getChildren().forEach(b => {
-        b.rotation += 0.1;
-        if (b.x < -50 || b.y < -50 || b.y > GAME_HEIGHT + 50) {
-          b.destroy();
-        }
+        b.rotation += 0.15;
+        let tc = Math.random() < 0.5 ? 0xffffff : 0xff0044;
+        let bt = scene.add.rectangle(b.x, b.y, 7, 7, tc);
+        bt.setBlendMode(Phaser.BlendModes.ADD);
+        scene.tweens.add({ targets: bt, alpha: 0, scale: 0.1, duration: 150, onComplete: () => bt.destroy() });
+        if (b.x < -50 || b.y < -50 || b.y > GAME_HEIGHT + 50) b.destroy();
       });
 
       // Update Bullets
