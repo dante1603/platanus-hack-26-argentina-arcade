@@ -150,6 +150,26 @@ function updateHealthHUD() {
   }
 }
 
+function spawnDeathExplosion(scene, x, y, neonColor, count) {
+  for (let i = 0; i < count; i++) {
+    let p = scene.add.rectangle(x, y, 6, 6, Math.random() < 0.5 ? 0xffffff : neonColor);
+    p.setBlendMode(Phaser.BlendModes.ADD);
+    p.setDepth(150);
+    let angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+    let dist = Phaser.Math.Between(30, 100);
+    scene.tweens.add({
+      targets: p,
+      x: x + Math.cos(angle) * dist,
+      y: y + Math.sin(angle) * dist,
+      alpha: 0,
+      scale: 0,
+      duration: Phaser.Math.Between(300, 550),
+      ease: 'Power2',
+      onComplete: () => p.destroy()
+    });
+  }
+}
+
 function spawnBoss(scene, sectionIdx) {
   bossSection = sectionIdx;
   bossMode = true;
@@ -161,11 +181,19 @@ function spawnBoss(scene, sectionIdx) {
   bossNextAction = 0;
   enemies.clear(true, true);
   enemyBullets.clear(true, true);
-  let w = isBoss2 ? 100 : 80;
-  let h = isBoss2 ? 100 : 80;
-  let color = isBoss2 ? 0xff2200 : 0xff8800;
-  boss = scene.add.rectangle(GAME_WIDTH + 60, GAME_HEIGHT / 2 - 50, w, h, color);
+  let rb = isBoss2 ? 55 : 42;
+  let neonColor = isBoss2 ? 0xff6600 : 0xff3333;
+  let puntos = isBoss2 ? 5 : 4;
+  boss = scene.add.graphics({ x: GAME_WIDTH + 60, y: GAME_HEIGHT / 2 - 50 });
+  boss.setBlendMode(Phaser.BlendModes.ADD);
   boss.setDepth(20);
+  boss.radioActual = rb;
+  boss.brilloExtra = 1;
+  boss.velRotacion = (Math.random() > 0.5 ? 1 : -1) * 0.015;
+  boss.faseTiempo = Math.random() * 100;
+  boss.setData('radioBase', rb);
+  boss.setData('neonColor', neonColor);
+  boss.setData('puntos', puntos);
   scene.tweens.add({
     targets: boss,
     x: GAME_WIDTH - 120,
@@ -182,24 +210,12 @@ function killBoss(scene) {
   if (bossDying) return;
   bossDying = true;
   let bx = boss.x, by = boss.y;
+  let bnc = boss.getData('neonColor') || 0xff6600;
   boss.destroy();
   boss = null;
   let flash = scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0xffffff, 1).setOrigin(0, 0).setDepth(300);
   scene.tweens.add({ targets: flash, alpha: 0, duration: 600, onComplete: () => flash.destroy() });
-  for (let i = 0; i < 8; i++) {
-    let p = scene.add.circle(bx, by, Phaser.Math.Between(5, 10), 0xff8800).setDepth(200);
-    let angle = (i / 8) * Math.PI * 2;
-    let dist = Phaser.Math.Between(80, 200);
-    scene.tweens.add({
-      targets: p,
-      x: bx + Math.cos(angle) * dist,
-      y: by + Math.sin(angle) * dist,
-      alpha: 0,
-      duration: 800,
-      ease: 'Power2',
-      onComplete: () => p.destroy()
-    });
-  }
+  spawnDeathExplosion(scene, bx, by, bnc, 14);
   scene.time.delayedCall(1000, () => {
     if (gameState !== 'playing') return;
     bossMode = false;
@@ -233,9 +249,12 @@ function executeBossPattern(scene) {
   if (!boss || !boss.active || bossDying) return;
   let numPatterns = bossSection === 4 ? 4 : 3;
   let pat = bossPattern % numPatterns;
+  let rb2 = boss.getData('radioBase') || 42;
+  scene.tweens.add({ targets: boss, radioActual: rb2 * 1.3, brilloExtra: 2.5, duration: 80, ease: 'Sine.easeOut', yoyo: true, hold: 30 });
   let spawnBB = (x, y, vx, vy) => {
     if (!bossMode || bossDying || !scene.physics) return;
-    let b = scene.add.circle(x, y, 9, 0xff2200).setDepth(50);
+    let b = scene.add.rectangle(x, y, 10, 10, 0xffffff).setDepth(50);
+    b.setBlendMode(Phaser.BlendModes.ADD);
     enemyBullets.add(b);
     scene.physics.add.existing(b);
     b.body.allowGravity = false;
@@ -488,6 +507,7 @@ function create() {
     bullet.destroy();
 
     if (hp <= 0) {
+      spawnDeathExplosion(scene, enemy.x, enemy.y, enemy.getData('neonColor') || 0xff0044, 8);
       enemy.destroy();
       enemiesDefeated++;
     } else {
@@ -1160,14 +1180,15 @@ function update(time, delta) {
       // Update Bullets
       playerBullets.getChildren().forEach(b => {
         if (bossMode && boss && boss.active && !bossDying) {
-          let hw = boss.width / 2 + 8;
-          let hh = boss.height / 2 + 8;
+          let rb = boss.getData('radioBase') || 42;
+          let hw = rb + 8;
+          let hh = rb + 8;
           if (Math.abs(b.x - boss.x) < hw && Math.abs(b.y - boss.y) < hh) {
             let dmg = b.getData('damage') || 1;
             bossHp -= dmg;
             b.destroy();
-            boss.setFillStyle(0xffffff);
-            scene.time.delayedCall(80, () => { if (boss && boss.active) boss.setFillStyle(0xff8800); });
+            boss.brilloExtra = 5;
+            scene.time.delayedCall(80, () => { if (boss && boss.active) boss.brilloExtra = 1; });
             if (bossHp <= 0 && !bossDying) killBoss(scene);
             return;
           }
@@ -1222,9 +1243,10 @@ function update(time, delta) {
         }
       });
 
-      // Boss pattern execution
-      if (bossMode && boss && boss.active && !bossEntering && !bossDying) {
-        if (playTime > bossNextAction) executeBossPattern(scene);
+      // Boss update
+      if (bossMode && boss && boss.active && !bossDying) {
+        drawNeonEnemy(boss, time);
+        if (!bossEntering && playTime > bossNextAction) executeBossPattern(scene);
       }
 
       // Recarga de saltos
