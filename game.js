@@ -25,7 +25,7 @@ const CABINET_KEYS = {
   P1_D: ['s', 'ArrowDown'],
   P1_L: ['a', 'ArrowLeft'],
   P1_R: ['d', 'ArrowRight'],
-  P1_1: ['u', 'z'],
+  P1_1: ['e', 'u', 'z', 'f'],
   P1_2: ['i'],
   P1_3: ['o'],
   P1_4: ['j'],
@@ -88,8 +88,30 @@ let gameState = 'start'; // 'start' | 'playing' | 'paused' | 'gameover'
 let controls = { held: {}, pressed: {} };
 let ui = {};
 let player;
-let floor;
+let platforms;
+let spikes;
+let playerBullets;
+let enemies;
+let enemyBullets;
+let powerups;
+let lastFireTime = 0;
+let nextEnemyTime = 0;
+let gameSpeed = 150;
+let nextPlatformX = 0;
+let playTime = 0;
+let immunityTimer = 0;
+let rapidFireTimer = 0;
 let jumps = { current: 3, max: 3, timer: 0 };
+
+function playerDie(scene, type) {
+  if (gameState === 'playing') {
+    if ((type === 'enemy' || type === 'enemyBullet') && playTime < immunityTimer) return;
+    gameState = 'gameover';
+    scene.physics.pause();
+    ui.gameOverText.setVisible(true);
+    ui.gameOverInstructions.setVisible(true);
+  }
+}
 
 function preload() {}
 
@@ -149,10 +171,82 @@ function create() {
   player.body.allowGravity = false;
   player.setVisible(false);
 
-  // Temporary Floor
-  floor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH, 20, 0x333333);
-  scene.physics.add.existing(floor, true); // true sets it to static
-  scene.physics.add.collider(player, floor);
+  // Texture for spikes
+  let g = scene.make.graphics({ add: false });
+  g.fillStyle(COLORS.spike, 1);
+  g.fillTriangle(0, 20, 10, 0, 20, 20);
+  g.generateTexture('spike', 20, 20);
+
+  // Spikes Group
+  spikes = scene.physics.add.group({
+    allowGravity: false,
+    immovable: true
+  });
+
+  // Player Bullets
+  playerBullets = scene.physics.add.group({ allowGravity: false });
+  
+  // Enemies
+  enemies = scene.physics.add.group({ allowGravity: false });
+
+  // Enemy Bullets
+  enemyBullets = scene.physics.add.group({ allowGravity: false });
+
+  // Powerups Group
+  powerups = scene.physics.add.group({ allowGravity: false });
+
+  // Overlaps
+  scene.physics.add.overlap(player, spikes, () => playerDie(scene, 'spike'));
+  scene.physics.add.overlap(player, enemies, () => playerDie(scene, 'enemy'));
+  scene.physics.add.overlap(player, enemyBullets, () => playerDie(scene, 'enemyBullet'));
+  scene.physics.add.overlap(playerBullets, enemies, (bullet, enemy) => {
+    let damage = bullet.getData('damage') || 1;
+    let hp = enemy.getData('hp') || 1;
+    hp -= damage;
+    enemy.setData('hp', hp);
+    
+    bullet.destroy();
+    
+    if (hp <= 0) {
+      enemy.destroy();
+    } else {
+      enemy.setFillStyle(0xff0000);
+      scene.time.delayedCall(100, () => {
+        if (enemy.active) enemy.setFillStyle(COLORS.enemy);
+      });
+    }
+  });
+
+  scene.physics.add.overlap(player, powerups, (pl, pu) => {
+    if (pl.body.velocity.y > 10 || pl.y < pu.y) {
+       let pt = pu.getData('type');
+       if (pt === 0) {
+          if (jumps.current < jumps.max) jumps.current++;
+       } else if (pt === 1) {
+          immunityTimer = playTime + 5000;
+       } else if (pt === 2) {
+          rapidFireTimer = playTime + 6000;
+       }
+       pu.destroy();
+    }
+  });
+
+  // Platforms Group
+  platforms = scene.physics.add.group({
+    allowGravity: false,
+    immovable: true
+  });
+  scene.physics.add.collider(player, platforms);
+
+  // Initial Floor
+  let startFloor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH * 1.5, 40, COLORS.platform);
+  platforms.add(startFloor);
+  scene.physics.add.existing(startFloor);
+  startFloor.body.allowGravity = false;
+  startFloor.body.immovable = true;
+  startFloor.body.checkCollision.down = false;
+  startFloor.body.checkCollision.left = false;
+  startFloor.body.checkCollision.right = false;
 
   // Jump Bars (HUD)
   ui.jumpBars = [];
@@ -221,6 +315,28 @@ function update(time, delta) {
 
       jumps.current = jumps.max;
       jumps.timer = 0;
+      gameSpeed = 150;
+      nextPlatformX = GAME_WIDTH + 200;
+      playTime = 0;
+      nextEnemyTime = 3000;
+      immunityTimer = 0;
+      rapidFireTimer = 0;
+
+      // Reset platforms and spikes
+      platforms.clear(true, true);
+      spikes.clear(true, true);
+      playerBullets.clear(true, true);
+      enemies.clear(true, true);
+      enemyBullets.clear(true, true);
+      powerups.clear(true, true);
+      let startFloor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH * 1.5, 40, COLORS.platform);
+      platforms.add(startFloor);
+      scene.physics.add.existing(startFloor);
+      startFloor.body.allowGravity = false;
+      startFloor.body.immovable = true;
+      startFloor.body.checkCollision.down = false;
+      startFloor.body.checkCollision.left = false;
+      startFloor.body.checkCollision.right = false;
     }
   } else if (gameState === 'playing') {
     if (consumePressed('START2') || consumePressed('P1_2')) { // Use START2 (Escape) or P1_2 to pause
@@ -229,27 +345,165 @@ function update(time, delta) {
       ui.pausedOverlay.setVisible(true);
       ui.pausedText.setVisible(true);
     } else {
-      // Movimiento horizontal (220px/s)
-      if (controls.held['P1_L']) {
-        player.body.setVelocityX(-220);
-      } else if (controls.held['P1_R']) {
-        player.body.setVelocityX(220);
-      } else {
-        player.body.setVelocityX(0);
+      playTime += delta;
+      let isOnGround = player.body.touching.down;
+
+      // Increase Speed (max 450, +5 per 10s => +0.5 per s)
+      gameSpeed += 0.5 * (delta / 1000);
+      if (gameSpeed > 450) gameSpeed = 450;
+
+      // Spawning Platforms
+      while (nextPlatformX < GAME_WIDTH + 800) {
+        let platY = Phaser.Math.Between(250, 500);
+        let platWidth = Phaser.Math.Between(150, 300);
+        let randSubtype = Math.random();
+        let hasSpikes = randSubtype < 0.25;
+        let isMoving = randSubtype >= 0.25 && randSubtype < 0.5;
+
+        let platColor = isMoving ? COLORS.platformMoving : COLORS.platform;
+        let plat = scene.add.rectangle(nextPlatformX + platWidth / 2, platY, platWidth, 20, platColor);
+        platforms.add(plat);
+        scene.physics.add.existing(plat);
+        plat.body.allowGravity = false;
+        plat.body.immovable = true;
+        plat.body.checkCollision.down = false;
+        plat.body.checkCollision.left = false;
+        plat.body.checkCollision.right = false;
+
+        if (isMoving) {
+          scene.tweens.add({
+            targets: plat,
+            y: plat.y - 80,
+            duration: 2000,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+          });
+        }
+        
+        if (hasSpikes) {
+          let spikeWidth = Math.floor((platWidth * 0.5) / 20) * 20;
+          if (spikeWidth < 20) spikeWidth = 20;
+          let isLeft = Math.random() < 0.5;
+          let spikeX = nextPlatformX + (isLeft ? (spikeWidth / 2) : (platWidth - spikeWidth / 2));
+          let spikeY = platY - 20;
+          
+          let spike = scene.add.tileSprite(spikeX, spikeY, spikeWidth, 20, 'spike');
+          spikes.add(spike);
+          scene.physics.add.existing(spike);
+          spike.body.allowGravity = false;
+          spike.body.immovable = true;
+          spike.body.setSize(spikeWidth - 4, 16);
+          spike.body.setOffset(2, 4);
+        } else if (!isMoving && Math.random() < 0.15) {
+          let pType = Phaser.Math.Between(0, 2);
+          let color = pType === 0 ? COLORS.powerupJump : (pType === 1 ? COLORS.powerupInvune : COLORS.powerupRapid);
+          
+          let pu;
+          if (pType === 0) pu = scene.add.triangle(nextPlatformX + platWidth/2, platY - 40, 0, 15, 15, 15, 7.5, 0, color);
+          else if (pType === 1) pu = scene.add.circle(nextPlatformX + platWidth/2, platY - 40, 10, color);
+          else pu = scene.add.rectangle(nextPlatformX + platWidth/2, platY - 40, 12, 16, color);
+          
+          powerups.add(pu);
+          scene.physics.add.existing(pu);
+          pu.body.allowGravity = false;
+          pu.body.immovable = true;
+          pu.setData('type', pType);
+          
+          scene.tweens.add({
+            targets: pu,
+            y: pu.y - 15,
+            duration: 1000,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+          });
+        }
+
+        nextPlatformX += platWidth + Phaser.Math.Between(100, 250);
       }
 
-      // Muerte por caída
-      if (player.y > GAME_HEIGHT) {
-        gameState = 'gameover';
-        scene.physics.pause();
-        ui.gameOverText.setVisible(true);
-        ui.gameOverInstructions.setVisible(true);
+      // Move and recycle platforms and spikes
+      platforms.getChildren().forEach(plat => {
+        plat.body.setVelocityX(-gameSpeed);
+        if (plat.x + plat.width / 2 < 0) {
+          plat.destroy();
+        }
+      });
+      spikes.getChildren().forEach(s => {
+        s.body.setVelocityX(-gameSpeed);
+        if (s.x + s.width / 2 < 0) s.destroy();
+      });
+      powerups.getChildren().forEach(p => {
+        p.body.setVelocityX(-gameSpeed);
+        if (p.x + p.width < 0) p.destroy();
+      });
+      // Also scroll nextPlatformX to the left so it stays relative to the world
+      nextPlatformX -= gameSpeed * (delta / 1000);
+
+      // Spawning Enemies
+      if (playTime > nextEnemyTime && enemies.countActive(true) < 4) {
+        let e = scene.add.circle(GAME_WIDTH + 50, Phaser.Math.Between(150, 450), 14, COLORS.enemy);
+        enemies.add(e);
+        scene.physics.add.existing(e);
+        e.body.allowGravity = false;
+        e.setData('lastFire', playTime + Phaser.Math.Between(1000, 2000));
+        e.setData('hp', 2);
+        
+        let targetX = GAME_WIDTH - 50 - Phaser.Math.Between(0, 40);
+        
+        scene.tweens.add({
+          targets: e,
+          x: targetX,
+          duration: 800 + Phaser.Math.Between(0, 500),
+          ease: 'Power2',
+          onComplete: () => {
+             scene.tweens.add({
+               targets: e,
+               y: e.y + Phaser.Math.Between(-80, 80),
+               duration: 1500,
+               yoyo: true,
+               repeat: -1,
+               ease: 'Sine.easeInOut'
+             });
+          }
+        });
+
+        let interval = Math.max(2500, 6000 - (gameSpeed - 150) * 15);
+        nextEnemyTime = playTime + interval;
+      }
+
+      // Movimiento horizontal
+      let playerSpeedX = 0;
+      if (controls.held['P1_L']) {
+        playerSpeedX = -220;
+      } else if (controls.held['P1_R']) {
+        playerSpeedX = 220;
+      } else if (isOnGround) {
+        playerSpeedX = -gameSpeed;
+      }
+      player.body.setVelocityX(playerSpeedX);
+
+      // Muerte por caída o salir por la izquierda
+      if (player.y > GAME_HEIGHT || player.x + player.width / 2 < 0) {
+        playerDie(scene, 'fall');
+      }
+      
+      // Invulnerability blink effect
+      if (playTime < immunityTimer) {
+        player.alpha = (Math.floor(playTime / 100) % 2 === 0) ? 0.3 : 1;
+      } else {
+        player.alpha = 1;
+      }
+      
+      // Limit X going off right
+      if (player.x + player.width / 2 > GAME_WIDTH) {
+        player.setX(GAME_WIDTH - player.width / 2);
       }
 
       // Salto y Doble Salto
-      let isOnGround = player.body.touching.down;
       
-      if (consumePressed('START1') || consumePressed('P1_U') || consumePressed('P1_1')) {
+      if (consumePressed('START1') || consumePressed('P1_U')) {
         if (isOnGround) {
           player.body.setVelocityY(-500);
         } else if (jumps.current > 0) {
@@ -258,12 +512,80 @@ function update(time, delta) {
         }
       }
 
+      // Disparo
+      if (controls.held['P1_1']) {
+        let cooldown = (playTime < rapidFireTimer) ? 100 : 400;
+        if (playTime > lastFireTime + cooldown) {
+          lastFireTime = playTime;
+          let bullet = scene.add.circle(player.x + 15, player.y, 6, COLORS.bullet);
+          playerBullets.add(bullet);
+          scene.physics.add.existing(bullet);
+          bullet.body.allowGravity = false;
+          bullet.body.setVelocityX(600);
+          bullet.setData('damage', 1);
+        }
+      }
+
+      // Update Enemy behavior and Bullets
+      enemies.getChildren().forEach(e => {
+        let lastFire = e.getData('lastFire');
+        if (playTime > lastFire + 2500) {
+          e.setData('lastFire', playTime + Phaser.Math.Between(-500, 500));
+          
+          let bullet = scene.add.rectangle(e.x - 14, e.y, 12, 12, COLORS.enemyBullet);
+          enemyBullets.add(bullet);
+          scene.physics.add.existing(bullet);
+          bullet.body.allowGravity = false;
+          bullet.body.setVelocityX(-350);
+        }
+      });
+      enemyBullets.getChildren().forEach(b => {
+        b.rotation += 0.1;
+        if (b.x < -50 || b.y < -50 || b.y > GAME_HEIGHT + 50) {
+          b.destroy();
+        }
+      });
+
+      // Update Bullets
+      playerBullets.getChildren().forEach(b => {
+        let closestDest = null;
+        let closestDist = Infinity;
+        enemies.getChildren().forEach(e => {
+          let dist = Phaser.Math.Distance.Between(b.x, b.y, e.x, e.y);
+          if (dist < closestDist && e.x > b.x) {
+            closestDist = dist;
+            closestDest = e;
+          }
+        });
+
+        if (closestDest) {
+          if (b.y < closestDest.y - 10) b.body.velocity.y += 15 * (delta / 16);
+          else if (b.y > closestDest.y + 10) b.body.velocity.y -= 15 * (delta / 16);
+        } else {
+          b.body.velocity.y *= 0.95;
+        }
+
+        // Estela
+        let trail = scene.add.circle(b.x, b.y, 4, COLORS.bullet, 0.5);
+        scene.tweens.add({
+          targets: trail,
+          alpha: 0,
+          scale: 0.1,
+          duration: 200,
+          onComplete: () => trail.destroy()
+        });
+
+        if (b.x > GAME_WIDTH + 50 || b.y < -50 || b.y > GAME_HEIGHT + 50) {
+          b.destroy();
+        }
+      });
+
       // Recarga de saltos
       if (jumps.current < jumps.max) {
         jumps.timer += delta;
-        if (jumps.timer >= 4000) {
+        if (jumps.timer >= 6000) {
           jumps.current++;
-          jumps.timer -= 4000;
+          jumps.timer -= 6000;
         }
       } else {
         jumps.timer = 0;
@@ -295,6 +617,31 @@ function update(time, delta) {
       // Restart position
       player.setPosition(200, 300);
       player.body.setVelocity(0, 0);
+
+      jumps.current = jumps.max;
+      jumps.timer = 0;
+      gameSpeed = 150;
+      nextPlatformX = GAME_WIDTH + 200;
+      playTime = 0;
+      nextEnemyTime = 3000;
+      immunityTimer = 0;
+      rapidFireTimer = 0;
+
+      // Reset platforms and spikes
+      platforms.clear(true, true);
+      spikes.clear(true, true);
+      playerBullets.clear(true, true);
+      enemies.clear(true, true);
+      enemyBullets.clear(true, true);
+      powerups.clear(true, true);
+      let startFloor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH * 1.5, 40, COLORS.platform);
+      platforms.add(startFloor);
+      scene.physics.add.existing(startFloor);
+      startFloor.body.allowGravity = false;
+      startFloor.body.immovable = true;
+      startFloor.body.checkCollision.down = false;
+      startFloor.body.checkCollision.left = false;
+      startFloor.body.checkCollision.right = false;
     }
   }
 
