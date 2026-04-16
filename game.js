@@ -294,9 +294,9 @@ function create() {
       enemy.destroy();
       enemiesDefeated++;
     } else {
-      enemy.setFillStyle(0xff0000);
+      enemy.setFillStyle(0xffffff);
       scene.time.delayedCall(100, () => {
-        if (enemy.active) enemy.setFillStyle(COLORS.enemy);
+        if (enemy.active) enemy.setFillStyle(enemy.getData('baseColor') || COLORS.enemy);
       });
     }
   });
@@ -631,12 +631,27 @@ function update(time, delta) {
 
       // Spawning Enemies
       if (playTime > nextEnemyTime && enemies.countActive(true) < 4 && isMechanicActive('enemies')) {
-        let e = scene.add.circle(GAME_WIDTH + 50, Phaser.Math.Between(150, 450), 14, COLORS.enemy);
+        let level = 1;
+        if (currentSection === 2) level = Math.random() < 0.5 ? 1 : 2;
+        else if (currentSection === 3) level = 2;
+        else if (currentSection >= 4) level = 3;
+
+        let r = 14;
+        let hp = 2;
+        let color = COLORS.enemy;
+        if (level === 2) { r = 18; hp = 4; color = 0xff3333; }
+        else if (level === 3) { r = 22; hp = 6; color = 0xff5500; }
+
+        let e = scene.add.circle(GAME_WIDTH + 50, Phaser.Math.Between(150, 450), r, color);
+        if (level === 3) e.setStrokeStyle(2, 0xffaa00);
+
         enemies.add(e);
         scene.physics.add.existing(e);
         e.body.allowGravity = false;
         e.setData('lastFire', playTime + Phaser.Math.Between(1000, 2000));
-        e.setData('hp', 2);
+        e.setData('hp', hp);
+        e.setData('level', level);
+        e.setData('baseColor', color);
         
         let targetX = GAME_WIDTH - 50 - Phaser.Math.Between(0, 40);
         
@@ -785,14 +800,35 @@ function update(time, delta) {
       // Update Enemy behavior and Bullets
       enemies.getChildren().forEach(e => {
         let lastFire = e.getData('lastFire');
-        if (playTime > lastFire + 2500) {
-          e.setData('lastFire', playTime + Phaser.Math.Between(-500, 500));
+        let level = e.getData('level') || 1;
+        let cooldown = level === 1 ? 2500 : 3000;
+        
+        if (playTime > lastFire + cooldown) {
+          let jitter = level === 1 ? Phaser.Math.Between(-500, 500) : 0;
+          e.setData('lastFire', playTime + jitter);
           
-          let bullet = scene.add.rectangle(e.x - 14, e.y, 12, 12, COLORS.enemyBullet);
-          enemyBullets.add(bullet);
-          scene.physics.add.existing(bullet);
-          bullet.body.allowGravity = false;
-          bullet.body.setVelocityX(-350);
+          let spawnEnemyBullet = (x, y, vx, vy) => {
+            if (!scene || !scene.physics || !e.active) return;
+            let bullet = scene.add.rectangle(x, y, 12, 12, COLORS.enemyBullet);
+            enemyBullets.add(bullet);
+            scene.physics.add.existing(bullet);
+            bullet.body.allowGravity = false;
+            bullet.body.setVelocity(vx, vy);
+          };
+
+          if (level === 1) {
+            spawnEnemyBullet(e.x - 14, e.y, -350, 0);
+          } else if (level === 2) {
+            spawnEnemyBullet(e.x - 18, e.y, -350, 0);
+            scene.time.delayedCall(300, () => {
+               if (e.active) spawnEnemyBullet(e.x - 18, e.y, -350, 0);
+            });
+          } else if (level === 3) {
+            for (let ang of [-10, 0, 10]) {
+               let rad = Phaser.Math.DegToRad(ang + 180);
+               spawnEnemyBullet(e.x - 22, e.y, Math.cos(rad) * 350, Math.sin(rad) * 350);
+            }
+          }
         }
       });
       enemyBullets.getChildren().forEach(b => {
