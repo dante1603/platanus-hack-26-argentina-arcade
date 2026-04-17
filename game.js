@@ -138,11 +138,11 @@ const playerState = {
   setState(newState) { this.state = newState; },
   reset() {
     this.state = 'idle';
-    this.playerState.jumps.current = TUNING.PLAYER.JUMP_INITIAL;
-    this.playerState.jumps.max = TUNING.PLAYER.JUMP_INITIAL;
-    this.playerState.jumps.timer = 0;
-    this.playerState.health.current = TUNING.PLAYER.HEALTH_INITIAL;
-    this.playerState.health.max = TUNING.PLAYER.HEALTH_INITIAL;
+    this.jumps.current = TUNING.PLAYER.JUMP_INITIAL;
+    this.jumps.max = TUNING.PLAYER.JUMP_INITIAL;
+    this.jumps.timer = 0;
+    this.health.current = TUNING.PLAYER.HEALTH_INITIAL;
+    this.health.max = TUNING.PLAYER.HEALTH_INITIAL;
     this.dash.activeUntil = 0;
     this.dash.cooldownUntil = 0;
     this.dash.direction = 0;
