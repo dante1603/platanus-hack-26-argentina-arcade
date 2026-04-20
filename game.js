@@ -83,34 +83,34 @@ const COLORS = {
   textHighlight: '#ffff00',
   pausedOverlay: 0x000000,
 
-  // Jugador base (se sobreescribe por color de arma)
+
   player: 0x00ffff,
 
-  // Plataformas: outline verde neon
+
   platform: 0x00ff66,
   platformMoving: 0x00ccff,
 
-  // Pinchos: rojo neon
+
   spike: 0xff0033,
 
-  // Enemigos por nivel (rojo → naranja → ámbar)
+
   enemyL1: 0xff3300,
   enemyL2: 0xff6600,
   enemyL3: 0xffaa00,
 
-  // Air triangles: magenta nave
+
   airTriangle: 0xff0088,
 
-  // Balas
+
   bullet: 0x00ffff,
   enemyBullet: 0xff0044,
 
-  // Powerups
+
   powerupJump: 0x00ff88,
   powerupInvune: 0x0066ff,
   powerupRapid: 0xffff00,
 
-  // Armas (sin cambios)
+
   weaponHoming: 0x00ffff,
   weaponAuto: 0xff8800,
   weaponTriple: 0xff00ff,
@@ -119,9 +119,9 @@ const COLORS = {
   weaponPierceMax: 0xffffff,
 };
 
-// NO modificar las teclas existentes — coinciden con el cableado físico del gabinete arcade.
-// Para atajos de prueba local, agregar teclas extra al final de cualquier array.
-// Las entradas P2_* fueron eliminadas: el juego es single-player y colisionaban con P1 ('f', flechas).
+
+
+
 const CABINET_KEYS = {
   P1_U: ['w', 'ArrowUp'],
   P1_D: ['s', 'ArrowDown'],
@@ -156,7 +156,7 @@ const Audio = (() => {
     if (!ctx) {
       ctx = new (window.AudioContext || window.webkitAudioContext)();
       masterGain = ctx.createGain();
-      masterGain.gain.value = 0.6;
+      masterGain.gain.value = 1.0;
       masterGain.connect(ctx.destination);
     }
     if (ctx.state === 'suspended') ctx.resume();
@@ -203,70 +203,102 @@ const Audio = (() => {
     } catch (e) { }
   }
 
+  let bgmStep = 0;
+  let bgmInterval = null;
+
+  function tickBGM() {
+    if (!ctx || ctx.state === 'suspended') return;
+    try {
+      let intensity = bossState ? 2 : (enemies.countActive(true) > 0 || currentSection > 0 ? 1 : 0);
+      let tempo = [200, 175, 140][intensity];
+      if (bgmInterval.delay !== tempo) bgmInterval.delay = tempo;
+
+      const bassTracks = [
+        [110, 0, 110, 0, 110, 0, 110, 0], 
+        [110, 110, 130, 110, 146, 110, 130, 123], 
+        [82, 82, 110, 82, 98, 82, 110, 103]
+      ];
+      
+      const bass = bassTracks[intensity];
+      playTone({ freq: bass[bgmStep % 8], type: intensity === 2 ? 'sawtooth' : 'triangle', duration: 0.15, gain: intensity === 2 ? 0.3 : (intensity === 1 ? 0.5 : 0.6) });
+
+      if (bgmStep % 4 === 0) playNoise({ duration: 0.05, gain: intensity === 0 ? 0.4 : 0.6, filterFreq: 60 });
+      if (intensity > 0 && bgmStep % 4 === 2) playNoise({ duration: 0.1, gain: 0.3, filterFreq: 1800 });
+
+      if (intensity > 0) {
+        const melTracks = [
+          [], [440, 0, 523, 0, 587, 659, 0, 440], [440, 523, 587, 783, 659, 880, 587, 523]
+        ];
+        let note = melTracks[intensity][bgmStep % 8];
+        if (note > 0) playTone({ freq: note, type: 'sine', duration: 0.2, gain: intensity === 2 ? 0.12 : 0.08 });
+      }
+      bgmStep++;
+    } catch (e) { }
+  }
+
   return {
-    jump() { playTone({ freq: 280, freqEnd: 520, type: 'square', duration: 0.12, gain: 0.2 }); },
-    doubleJump() {
-      playTone({ freq: 400, freqEnd: 800, type: 'square', duration: 0.08, gain: 0.25 });
-      playTone({ freq: 500, freqEnd: 1000, type: 'sine', duration: 0.12, gain: 0.2, delay: 0.06 });
+    startBGM(scene) {
+      if (bgmInterval) return;
+      bgmInterval = scene.time.addEvent({ delay: 200, loop: true, callback: tickBGM });
     },
-    land() { playTone({ freq: 80, freqEnd: 60, type: 'sine', duration: 0.08, gain: 0.15 }); },
-    dash() { playTone({ freq: 600, freqEnd: 200, type: 'sawtooth', duration: 0.1, gain: 0.15 }); },
-    downDash() { playTone({ freq: 800, freqEnd: 150, type: 'sawtooth', duration: 0.15, gain: 0.2 }); },
+    stopBGM() {
+      if (bgmInterval) { bgmInterval.remove(); bgmInterval = null; }
+    },
+    jump() { playTone({ freq: 280, freqEnd: 520, type: 'square', duration: 0.12, gain: 0.08 }); },
+    doubleJump() {
+      playTone({ freq: 400, freqEnd: 800, type: 'square', duration: 0.08, gain: 0.1 });
+      playTone({ freq: 500, freqEnd: 1000, type: 'sine', duration: 0.12, gain: 0.08, delay: 0.06 });
+    },
+    land() { playTone({ freq: 80, freqEnd: 60, type: 'sine', duration: 0.08, gain: 0.06 }); },
+    dash() { playTone({ freq: 600, freqEnd: 200, type: 'sawtooth', duration: 0.1, gain: 0.08 }); },
+    downDash() { playTone({ freq: 800, freqEnd: 150, type: 'sawtooth', duration: 0.15, gain: 0.1 }); },
     hurt() {
-      playNoise({ duration: 0.15, gain: 0.3, filterFreq: 800 });
-      playTone({ freq: 150, freqEnd: 80, type: 'sine', duration: 0.2, gain: 0.2, delay: 0.05 });
+      playNoise({ duration: 0.15, gain: 0.15, filterFreq: 800 });
+      playTone({ freq: 150, freqEnd: 80, type: 'sine', duration: 0.2, gain: 0.1, delay: 0.05 });
     },
     die() {
-      playNoise({ duration: 0.4, gain: 0.4, filterFreq: 400 });
-      playTone({ freq: 200, freqEnd: 60, type: 'sine', duration: 0.5, gain: 0.3 });
+      playNoise({ duration: 0.4, gain: 0.2, filterFreq: 400 });
+      playTone({ freq: 200, freqEnd: 60, type: 'sine', duration: 0.5, gain: 0.15 });
     },
-    deathPulse() { playTone({ freq: 800, freqEnd: 200, type: 'sine', duration: 0.4, gain: 0.3 }); },
-    shootHoming() { playTone({ freq: 600, freqEnd: 500, type: 'sine', duration: 0.06, gain: 0.12 }); },
-    shootAuto() { playTone({ freq: 900, freqEnd: 700, type: 'square', duration: 0.04, gain: 0.06 }); },
+    deathPulse() { playTone({ freq: 800, freqEnd: 200, type: 'sine', duration: 0.4, gain: 0.15 }); },
+    shootHoming() { playTone({ freq: 600, freqEnd: 500, type: 'sine', duration: 0.06, gain: 0.06 }); },
+    shootAuto() { playTone({ freq: 900, freqEnd: 700, type: 'square', duration: 0.04, gain: 0.03 }); },
     shootTriple() {
-      [500, 600, 700].forEach((f, i) => {
-        playTone({ freq: f, type: 'sine', duration: 0.05, gain: 0.1, delay: i * 0.02 });
-      });
+      [500, 600, 700].forEach((f, i) => { playTone({ freq: f, type: 'sine', duration: 0.05, gain: 0.05, delay: i * 0.02 }); });
     },
     pierceCharge(level) {
       let freq = [0, 400, 600, 1000][level] || 400;
-      playTone({ freq, freqEnd: freq * 1.1, type: 'sawtooth', duration: 0.08, gain: 0.06 * level });
+      playTone({ freq, freqEnd: freq * 1.1, type: 'sawtooth', duration: 0.08, gain: 0.03 * level });
     },
     pierceShoot(level) {
       let freq = [0, 500, 700, 1200][level] || 500;
-      playTone({ freq, freqEnd: freq * 0.5, type: 'sawtooth', duration: 0.2, gain: 0.3 });
-      if (level === 3) playNoise({ duration: 0.15, gain: 0.2, filterFreq: 3000 });
+      playTone({ freq, freqEnd: freq * 0.5, type: 'sawtooth', duration: 0.2, gain: 0.15 });
+      if (level === 3) playNoise({ duration: 0.15, gain: 0.1, filterFreq: 3000 });
     },
-    enemyShoot() { playTone({ freq: 300, freqEnd: 200, type: 'square', duration: 0.08, gain: 0.12 }); },
+    enemyShoot() { playTone({ freq: 300, freqEnd: 200, type: 'square', duration: 0.08, gain: 0.06 }); },
     enemyDie() {
-      playNoise({ duration: 0.2, gain: 0.25, filterFreq: 1200 });
-      playTone({ freq: 200, freqEnd: 80, type: 'sine', duration: 0.25, gain: 0.15 });
+      playNoise({ duration: 0.2, gain: 0.12, filterFreq: 1200 });
+      playTone({ freq: 200, freqEnd: 80, type: 'sine', duration: 0.25, gain: 0.07 });
     },
     bossEnter() {
-      playTone({ freq: 80, freqEnd: 60, type: 'sawtooth', duration: 1.2, gain: 0.4 });
-      playNoise({ duration: 0.8, gain: 0.2, filterFreq: 200 });
+      playTone({ freq: 80, freqEnd: 60, type: 'sawtooth', duration: 1.2, gain: 0.2 });
+      playNoise({ duration: 0.8, gain: 0.1, filterFreq: 200 });
     },
-    bossHurt() { playTone({ freq: 400, freqEnd: 300, type: 'square', duration: 0.1, gain: 0.2 }); },
+    bossHurt() { playTone({ freq: 400, freqEnd: 300, type: 'square', duration: 0.1, gain: 0.1 }); },
     bossDie() {
       for (let i = 0; i < 5; i++) {
-        playTone({
-          freq: 100 + i * 80, freqEnd: 100 + i * 80 + 200, type: 'sawtooth',
-          duration: 0.3, gain: 0.3 - i * 0.04, delay: i * 0.25
-        });
+        playTone({ freq: 100 + i * 80, freqEnd: 100 + i * 80 + 200, type: 'sawtooth', duration: 0.3, gain: 0.15 - i * 0.02, delay: i * 0.25 });
       }
-      playNoise({ duration: 1.5, gain: 0.5, filterFreq: 600 });
+      playNoise({ duration: 1.5, gain: 0.25, filterFreq: 600 });
     },
     powerup() {
-      [0, 1, 2].forEach(i => {
-        playTone({ freq: 400 + i * 150, type: 'sine', duration: 0.1, gain: 0.2, delay: i * 0.08 });
-      });
+      [400, 550, 700].forEach((f, i) => { playTone({ freq: f, type: 'sine', duration: 0.1, gain: 0.1, delay: i * 0.08 }); });
     },
-    sectionChange() { playTone({ freq: 300, freqEnd: 600, type: 'sine', duration: 0.4, gain: 0.25 }); },
+    sectionChange() { playTone({ freq: 300, freqEnd: 600, type: 'sine', duration: 0.4, gain: 0.12 }); },
     combo(count) {
       let freq = Math.min(1200, 400 + count * 80);
-      playTone({ freq, type: 'square', duration: 0.06, gain: 0.15 });
-    },
-    leaderboardChar() { playTone({ freq: 800, type: 'square', duration: 0.05, gain: 0.1 }); }
+      playTone({ freq, type: 'square', duration: 0.06, gain: 0.07 });
+    }
   };
 })();
 
@@ -300,7 +332,7 @@ new Phaser.Game(config);
 
 let controls = { held: {}, pressed: {} };
 
-// Konami Code: ↑ ↑ ↓ ↓ ← → ← → U I
+
 const KONAMI_SEQUENCE = ['P1_U', 'P1_U', 'P1_D', 'P1_D', 'P1_L', 'P1_R', 'P1_L', 'P1_R', 'P1_1', 'P1_2'];
 let konamiProgress = 0;
 let cheatsEnabled = false;
@@ -319,7 +351,7 @@ let gameSpeed = TUNING.WORLD.GAME_SPEED_START;
 let nextPlatformX = 0;
 let playTime = 0;
 const playerState = {
-  state: 'idle', // 'idle' | 'running' | 'airborne' | 'dashing' | 'downDashing'
+  state: 'idle',
   jumps: { current: TUNING.PLAYER.JUMP_INITIAL, max: TUNING.PLAYER.JUMP_INITIAL, timer: 0 },
   health: { current: TUNING.PLAYER.HEALTH_INITIAL, max: TUNING.PLAYER.HEALTH_INITIAL },
   dash: { activeUntil: 0, cooldownUntil: 0, direction: 0, lastTapL: 0, lastTapR: 0 },
@@ -349,7 +381,7 @@ const playerState = {
 let shootMode = 'homing';
 
 const SECTIONS = [
-  { color: 0x002244, duration: 20000, speedFloor: 150, mechanics: [] },
+  { color: 0x002244, duration: 4000, speedFloor: 150, mechanics: [] },
   { color: 0x884400, duration: 25000, speedFloor: 170, mechanics: ['spikes', 'enemies'] },
   { color: 0x666600, duration: 30000, speedFloor: 190, mechanics: ['spikes', 'enemies', 'moving'] },
   { color: 0x004400, duration: 35000, speedFloor: 210, mechanics: ['spikes', 'enemies', 'moving', 'triangles'] },
@@ -366,7 +398,7 @@ let currentThemeColorRGB = null;
 let enemiesDefeated = 0;
 let currentScore = 0;
 
-let bossState = null; // null | 'entering' | 'active' | 'dying'
+let bossState = null;
 let boss = null;
 let bossHp = 0;
 let bossHpMax = TUNING.BOSS.HP_BOSS1;
@@ -375,7 +407,7 @@ let bossNextAction = 0;
 let bossSection = 0;
 let loopCount = 0;
 
-// ── Player globals (refactor visual) ──────────────────────────────────────
+
 let wasOnGround = false;
 let landingSquashTime = 0;
 let playerTrail = [];
@@ -383,12 +415,12 @@ const PLAYER_TRAIL_MAX = 14;
 const PLAYER_TRAIL_LIFE = 280;
 let playerTrailGfx = null;
 
-// ── Background parallax globals (Fase 4) ───────────────────────────────────
+
 let bgStarsNear = [];
 let bgStarsFar = [];
 let bgNebulaPoints = [];
 
-// ── Weapon helpers ────────────────────────────────────────────────────────
+
 function getWeaponColor(mode) {
   const map = { homing: COLORS.weaponHoming, auto: COLORS.weaponAuto, triple: COLORS.weaponTriple, pierce: COLORS.weaponPierce };
   return map[mode] || COLORS.weaponHoming;
@@ -411,9 +443,9 @@ function showWeaponChangeIndicator(scene, name, color) {
   });
 }
 
-// drawNeonStroke: halo grueso + trazo color + núcleo blanco
+
 function drawNeonStroke(g, pathFn, color, opts = {}) {
-  const { glowWidth=8, glowAlpha=0.25, strokeWidth=3, coreWidth=1.2, coreAlpha=1 } = opts;
+  const { glowWidth = 8, glowAlpha = 0.25, strokeWidth = 3, coreWidth = 1.2, coreAlpha = 1 } = opts;
   g.lineStyle(glowWidth, color, glowAlpha); pathFn(g);
   g.lineStyle(strokeWidth, color, 1); pathFn(g);
   g.lineStyle(coreWidth, 0xffffff, coreAlpha); pathFn(g);
@@ -436,22 +468,22 @@ function computeSlimeTransform() {
   let color = getWeaponColor(shootMode);
   let velY = player.body.velocity.y;
   let onGround = player.body.touching.down;
-  if (playerState.state === 'dashing') { scaleX=1.25; scaleY=0.78; }
-  else if (playerState.state === 'downDashing') { scaleX=0.82; scaleY=1.25; }
+  if (playerState.state === 'dashing') { scaleX = 1.25; scaleY = 0.78; }
+  else if (playerState.state === 'downDashing') { scaleX = 0.82; scaleY = 1.25; }
   else if (!onGround) {
-    if (velY < -100) { scaleX=0.88; scaleY=1.15; }
-    else if (velY > 200) { scaleX=0.92; scaleY=1.18; }
-  } else { scaleX=1.08; scaleY=0.93; }
+    if (velY < -100) { scaleX = 0.88; scaleY = 1.15; }
+    else if (velY > 200) { scaleX = 0.92; scaleY = 1.18; }
+  } else { scaleX = 1.08; scaleY = 0.93; }
   if (landingSquashTime > 0) {
     let t = (playTime - landingSquashTime) / 200;
-    if (t < 1) { let squash=Math.sin(t*Math.PI)*0.22; scaleX*=(1+squash); scaleY*=(1-squash); }
-    else { landingSquashTime=0; }
+    if (t < 1) { let squash = Math.sin(t * Math.PI) * 0.22; scaleX *= (1 + squash); scaleY *= (1 - squash); }
+    else { landingSquashTime = 0; }
   }
-  if (shootMode==='pierce' && playerState.pierce.charging) {
-    let lvl=playerState.pierce.chargeLevel;
-    let pulse=1+Math.sin(playTime*0.015)*0.05*(lvl+1);
-    scaleX*=pulse; scaleY*=pulse;
-    color=[COLORS.weaponPierce,COLORS.weaponPierce,COLORS.weaponPierceMed,COLORS.weaponPierceMax][lvl];
+  if (shootMode === 'pierce' && playerState.pierce.charging) {
+    let lvl = playerState.pierce.chargeLevel;
+    let pulse = 1 + Math.sin(playTime * 0.015) * 0.05 * (lvl + 1);
+    scaleX *= pulse; scaleY *= pulse;
+    color = [COLORS.weaponPierce, COLORS.weaponPierce, COLORS.weaponPierceMed, COLORS.weaponPierceMax][lvl];
   }
   return { scaleX, scaleY, color };
 }
@@ -474,40 +506,9 @@ function updatePlayerTrail(scene, color, delta = 16) {
   }
 }
 
-// ── Background noise helper (Fase 4) ──────────────────────────────────────
-function smoothNoise(x, y, seed) {
-  return Math.abs(
-    Math.sin(x * 0.3 + seed) * Math.cos(y * 0.2 + seed * 1.3) +
-    Math.sin(x * 0.7 + seed * 2) * Math.cos(y * 0.5 + seed) * 0.5 +
-    Math.sin(x * 0.15 + seed * 0.7) * Math.cos(y * 0.35 + seed * 1.7) * 0.3
-  );
-}
 
 function updateBackground(scene, delta) {
-  let tRGB = currentThemeColorRGB;
   let time = scene.time.now;
-
-  // Nebulosa: rectSize=29, noiseScale=0.037, timeSpd=0.00005, cutDensity=0.75, intensity=0.50, maxAlpha=0.18
-  let rectSize=29,noiseScale=0.037,timeSpd=0.00005,cutDensity=0.75,intensity=0.50,maxAlpha=0.18;
-
-  // Nebulosa
-  ui.bgNebulaGfx.clear();
-  for (let pt of bgNebulaPoints) {
-    let n = smoothNoise(pt.x * noiseScale, pt.y * noiseScale + time * timeSpd, pt.seed);
-    n = Math.max(0, n - cutDensity) * intensity;
-
-    if (n < 0.05) continue;
-
-    let r = Math.min(255, Math.floor(tRGB.r * n * 0.8 + 10));
-    let g = Math.min(255, Math.floor(tRGB.g * n * 0.8 + 10));
-    let b = Math.min(255, Math.floor(tRGB.b * n * 0.8 + 20 * n + 30));
-    let color = Phaser.Display.Color.GetColor(r, g, b);
-
-    ui.bgNebulaGfx.fillStyle(color, n * maxAlpha);
-    ui.bgNebulaGfx.fillRect(pt.x, pt.y, rectSize, rectSize);
-  }
-
-  // Estrellas
   ui.bgStarsGfx.clear();
 
   bgStarsFar.forEach(star => {
@@ -521,16 +522,15 @@ function updateBackground(scene, delta) {
     star.x -= gameSpeed * 0.4 * (delta / 1000);
     if (star.x < 0) { star.x = GAME_WIDTH; star.y = Math.random() * GAME_HEIGHT; }
     if (star.trail) {
-      let trailLen = gameSpeed * 0.024;
       ui.bgStarsGfx.fillStyle(0xffffff, star.alpha * 0.3);
-      ui.bgStarsGfx.fillRect(star.x, star.y, trailLen, star.size * 0.5);
+      ui.bgStarsGfx.fillRect(star.x, star.y, gameSpeed * 0.024, star.size * 0.5);
     }
     ui.bgStarsGfx.fillStyle(0xffffff, star.alpha);
     ui.bgStarsGfx.fillCircle(star.x, star.y, star.size);
   });
 }
 
-// ── Entity factories ───────────────────────────────────────────────────────
+
 
 function createEnemyBullet(scene, x, y, vx, vy) {
   let b = scene.add.rectangle(x, y, 10, 10, 0xffffff).setDepth(50);
@@ -608,16 +608,16 @@ function createPlatform(scene, x, y, width, opts = {}) {
   function redraw(col) {
     plat.clear();
     const w = width, h = 20;
-    // Relleno muy tenue por dentro (casi negro, sólo para dar cuerpo)
+
     plat.fillStyle(col, 0.08);
     plat.fillRect(-w / 2, -h / 2, w, h);
-    // Halo
+
     plat.lineStyle(6, col, 0.22);
     plat.strokeRect(-w / 2, -h / 2, w, h);
-    // Trazo principal
+
     plat.lineStyle(2.5, col, 1);
     plat.strokeRect(-w / 2, -h / 2, w, h);
-    // Núcleo blanco (apenas visible en los bordes)
+
     plat.lineStyle(1, 0xffffff, 0.8);
     plat.strokeRect(-w / 2 + 1, -h / 2 + 1, w - 2, h - 2);
   }
@@ -654,7 +654,7 @@ function createSpike(scene, x, y, width) {
   const tipY = baseY - spikeH;
   const count = Math.floor(w / spikeW);
 
-  // Halo de todas las púas en una pasada
+
   spike.lineStyle(7, spikeColor, 0.25);
   for (let i = 0; i < count; i++) {
     let tx = -w / 2 + i * spikeW + spikeW / 2;
@@ -664,7 +664,7 @@ function createSpike(scene, x, y, width) {
     spike.lineTo(tx + spikeW / 2, baseY);
     spike.strokePath();
   }
-  // Trazo principal
+
   spike.lineStyle(2, spikeColor, 1);
   for (let i = 0; i < count; i++) {
     let tx = -w / 2 + i * spikeW + spikeW / 2;
@@ -674,7 +674,7 @@ function createSpike(scene, x, y, width) {
     spike.lineTo(tx + spikeW / 2, baseY);
     spike.strokePath();
   }
-  // Núcleo blanco en la punta
+
   for (let i = 0; i < count; i++) {
     let tx = -w / 2 + i * spikeW + spikeW / 2;
     spike.fillStyle(0xffffff, 1);
@@ -685,7 +685,7 @@ function createSpike(scene, x, y, width) {
   scene.physics.add.existing(spike);
   spike.body.allowGravity = false;
   spike.body.immovable = true;
-  // Hitbox cubriendo solo las púas
+
   spike.body.setSize(w - 4, spikeH - 4);
   spike.body.setOffset(-w / 2 + 2, tipY + 2);
   return spike;
@@ -720,7 +720,7 @@ function createEnemy(scene, level) {
   e.radioActual = stats.r;
   e.radioBase = stats.r;
   e.brilloExtra = 1;
-  // Velocidad de rotación por nivel (más nivel = más rápido)
+
   e.velRotacion = (Math.random() > 0.5 ? 1 : -1) * (0.012 + level * 0.008);
   e.rotOuter = Math.random() * Math.PI * 2;
   e.rotInner = Math.random() * Math.PI * 2;
@@ -757,8 +757,8 @@ function createAirTriangle(scene, y, level) {
   tri.setDepth(15);
   tri.setBlendMode(Phaser.BlendModes.ADD);
 
-  // Nave triangular (punta a la izquierda, hacia el jugador)
-  // Halo
+
+
   tri.lineStyle(8, color, 0.25);
   tri.beginPath();
   tri.moveTo(-s, 0);
@@ -766,10 +766,10 @@ function createAirTriangle(scene, y, level) {
   tri.lineTo(s, s * 0.7);
   tri.closePath();
   tri.strokePath();
-  // Relleno tenue
+
   tri.fillStyle(color, 0.15);
   tri.fillPath();
-  // Trazo principal
+
   tri.lineStyle(2.5, color, 1);
   tri.beginPath();
   tri.moveTo(-s, 0);
@@ -777,7 +777,7 @@ function createAirTriangle(scene, y, level) {
   tri.lineTo(s, s * 0.7);
   tri.closePath();
   tri.strokePath();
-  // Núcleo blanco
+
   tri.lineStyle(1, 0xffffff, 0.9);
   tri.beginPath();
   tri.moveTo(-s + 2, 0);
@@ -797,13 +797,13 @@ function createAirTriangle(scene, y, level) {
   tri.setData('fired', false);
   tri.setData('size', s);
 
-  // --- TRAIL DE CUADRADOS MAGENTA (estilo assets.html) ---
+
   let emitterRef = scene.time.addEvent({
     delay: level === 1 ? 45 : (level === 2 ? 35 : 25),
     loop: true,
     callback: () => {
       if (!tri || !tri.active) { emitterRef.remove(); return; }
-      // Cuadrado atrás del triángulo (a la derecha porque se mueve hacia la izquierda)
+
       let squareSize = s * 0.7 * (level === 1 ? 0.9 : level === 2 ? 1.0 : 1.1);
       let sq = scene.add.rectangle(tri.x + s, tri.y + Phaser.Math.Between(-3, 3), squareSize, squareSize, color);
       sq.setBlendMode(Phaser.BlendModes.ADD);
@@ -843,10 +843,10 @@ function isMechanicActive(name) {
   return SECTIONS[currentSection].mechanics.includes(name);
 }
 
-// ── Event bus helpers ──────────────────────────────────────────────────────
-// Emiten eventos de Phaser en los puntos clave de la lógica.
-// Para añadir sonidos/animaciones: scene.events.on('player:jump', handler).
-let _eventScene = null; // se setea en create()
+
+
+
+let _eventScene = null;
 function emit(event, data) {
   if (_eventScene) _eventScene.events.emit(event, data);
 }
@@ -857,15 +857,15 @@ function updateHealthHUD() {
   }
 }
 
-// ── HUD bar helper ─────────────────────────────────────────────────────────
-// Reconstruye jumpBars o healthBars al máximo dado, destruyendo los sobrantes.
-// createFn(scene, index, newMax) → Phaser GameObject
+
+
+
 function rebuildBarHUD(scene, key, newMax, createFn) {
-  // destruir sobrantes
+
   while (ui[key].length > newMax) ui[key].pop().destroy();
-  // crear faltantes
+
   while (ui[key].length < newMax) ui[key].push(createFn(scene, ui[key].length, newMax));
-  // reposicionar todos (necesario cuando cambia el max en healthBars)
+
   if (key === 'healthBars') {
     for (let i = 0; i < ui.healthBars.length; i++) {
       ui.healthBars[i].setX(GAME_WIDTH / 2 - (newMax - 1) * 14 + i * 28);
@@ -884,12 +884,12 @@ function spawnDeathExplosion(scene, x, y, neonColor, count) {
       let spd = Phaser.Math.Between(60, 140);
       let sh = scene.add.rectangle(x, y, Phaser.Math.Between(6, 16), 3, Math.random() < 0.4 ? 0xffffff : neonColor);
       sh.setBlendMode(Phaser.BlendModes.ADD).setDepth(152).setRotation(ang);
-      scene.tweens.add({ targets: sh, x: x+Math.cos(ang)*spd, y: y+Math.sin(ang)*spd, rotation: ang+(Math.random()-0.5)*3, alpha:0, duration: Phaser.Math.Between(320,560), ease:'Power2', onComplete:()=>sh.destroy() });
+      scene.tweens.add({ targets: sh, x: x + Math.cos(ang) * spd, y: y + Math.sin(ang) * spd, rotation: ang + (Math.random() - 0.5) * 3, alpha: 0, duration: Phaser.Math.Between(320, 560), ease: 'Power2', onComplete: () => sh.destroy() });
     } else {
       let dist = Phaser.Math.Between(20, 80);
       let p = scene.add.circle(x, y, Phaser.Math.Between(2, 5), 0xffffff);
       p.setBlendMode(Phaser.BlendModes.ADD).setDepth(151);
-      scene.tweens.add({ targets: p, x: x+Math.cos(ang)*dist, y: y+Math.sin(ang)*dist, alpha:0, scale:0, duration: Phaser.Math.Between(280,500), ease:'Power2', onComplete:()=>p.destroy() });
+      scene.tweens.add({ targets: p, x: x + Math.cos(ang) * dist, y: y + Math.sin(ang) * dist, alpha: 0, scale: 0, duration: Phaser.Math.Between(280, 500), ease: 'Power2', onComplete: () => p.destroy() });
     }
   }
   let ring = scene.add.graphics({ x, y });
@@ -1028,24 +1028,24 @@ function executeBossPattern(scene) {
 
 function drawNeonEnemy(e, time) {
   e.clear();
-  // Dos rotaciones contrapuestas como en assets.html
+
   e.rotOuter = (e.rotOuter || 0) + (e.velRotacion || 0.02);
   e.rotInner = (e.rotInner || 0) - (e.velRotacion || 0.02) * 2;
 
-  let sides = e.sides || 3;            // 3 / 4 / 5 según level
+  let sides = e.sides || 3;
   let nc = e.neonColor || COLORS.enemyL1;
   let bx = e.brilloExtra || 1;
   let rBase = e.radioBase || 18;
 
-  // Pulso leve (expansión al disparar se maneja por radioActual)
+
   let pulse = Math.sin((time * 0.003) + (e.faseTiempo || 0)) * 1.2;
   let rOuter = (e.radioActual || rBase) + pulse;
   let rInner = rOuter * 0.45;
 
-  // Helper para construir array de vértices de un polígono regular
+
   function makePoly(radius, rotation) {
     const verts = [];
-    // Empieza arriba para sides impares; en la "punta" para sides pares
+
     const startAngle = (sides % 2 !== 0) ? -Math.PI / 2 : -Math.PI / sides;
     for (let i = 0; i < sides; i++) {
       let a = startAngle + rotation + (i / sides) * Math.PI * 2;
@@ -1057,7 +1057,7 @@ function drawNeonEnemy(e, time) {
   const outerVerts = makePoly(rOuter, e.rotOuter);
   const innerVerts = makePoly(rInner, e.rotInner);
 
-  // --- POLÍGONO EXTERNO ---
+
   e.lineStyle(9, nc, 0.25 * bx);
   e.strokePoints(outerVerts, true, true);
   e.lineStyle(3.5, nc, 1);
@@ -1065,7 +1065,7 @@ function drawNeonEnemy(e, time) {
   e.lineStyle(1.2, 0xffffff, 1);
   e.strokePoints(outerVerts, true, true);
 
-  // --- POLÍGONO INTERNO ---
+
   e.lineStyle(5, nc, 0.25 * bx);
   e.strokePoints(innerVerts, true, true);
   e.lineStyle(2, nc, 1);
@@ -1073,7 +1073,7 @@ function drawNeonEnemy(e, time) {
   e.lineStyle(1, 0xffffff, 0.9);
   e.strokePoints(innerVerts, true, true);
 
-  // Núcleo luminoso central (aumenta al disparar)
+
   e.fillStyle(nc, 0.4 * bx);
   e.fillCircle(0, 0, rInner * 0.4);
   e.fillStyle(0xffffff, Math.min(1, 0.6 * bx));
@@ -1110,7 +1110,7 @@ async function updateLeaderboard(score) {
 }
 
 function triggerDeathPulse(scene) {
-  // Onda expansiva blanca
+
   let ring = scene.add.graphics();
   ring.lineStyle(4, 0xffffff, 0.9);
   ring.strokeCircle(0, 0, 10);
@@ -1124,7 +1124,7 @@ function triggerDeathPulse(scene) {
     onComplete: () => ring.destroy()
   });
 
-  // Segunda onda coloreada (color del arma)
+
   let ring2 = scene.add.graphics();
   let col = getWeaponColor(shootMode);
   ring2.lineStyle(2, col, 0.7);
@@ -1139,7 +1139,7 @@ function triggerDeathPulse(scene) {
     onComplete: () => ring2.destroy()
   });
 
-  // Destrucción en cadena: de la bala más cercana a la más lejana
+
   let bullets = enemyBullets.getChildren().slice();
   bullets.sort((a, b) => {
     let da = Phaser.Math.Distance.Between(player.x, player.y, a.x, a.y);
@@ -1181,6 +1181,10 @@ function playerDie(scene, type) {
     playerState.setState('hurt');
     playerState.invulnerableUntil = playTime + TUNING.PLAYER.IMMUNITY_AFTER_HIT_MS;
     emit('player:hurt');
+
+
+    scene.cameras.main.shake(150, 0.01);
+
     let flash = scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0xff0000, 0.25).setOrigin(0, 0).setDepth(250);
     scene.tweens.add({ targets: flash, alpha: 0, duration: 300, onComplete: () => flash.destroy() });
     if (type === 'enemyBullet') {
@@ -1196,7 +1200,7 @@ function create() {
   const scene = this;
   _eventScene = scene;
 
-  // ── Audio event bindings (Fase 3) ────────────────────────────────────────
+
   scene.events.on('player:jump', () => Audio.jump());
   scene.events.on('player:doubleJump', () => Audio.doubleJump());
   scene.events.on('player:land', () => Audio.land());
@@ -1219,36 +1223,24 @@ function create() {
   scene.events.on('boss:die', () => Audio.bossDie());
   scene.events.on('section:change', () => Audio.sectionChange());
 
-  // ── Fondo espacial (Fase 4) ──────────────────────────────────────────────
-  ui.bgNebulaGfx = scene.add.graphics().setDepth(1);
+
   ui.bgStarsGfx = scene.add.graphics().setDepth(2);
 
-  // --- VARIABLES PARA CONFIGURAR ---
-  let gridSpacing = 8;  // Separación de la grilla de la nebulosa
-  let farScale = 1.2;   // Multiplicador tamaño estrellas lejanas
-  let nearScale = 1.0;  // Multiplicador tamaño estrellas cercanas
+  let farScale = 1.2;
+  let nearScale = 1.0;
 
-  // Puntos pre-calculados de nebulosa
-  bgNebulaPoints = [];
-  for (let x = 0; x < GAME_WIDTH; x += gridSpacing) {
-    for (let y = 0; y < GAME_HEIGHT; y += gridSpacing) {
-      bgNebulaPoints.push({ x, y, seed: Math.random() * 100 });
-    }
-  }
-
-  // Estrellas lejanas
   bgStarsFar = [];
   for (let i = 0; i < 80; i++) {
     bgStarsFar.push({ x: Math.random() * GAME_WIDTH, y: Math.random() * GAME_HEIGHT, size: (Math.random() * 1.5 + 0.5) * farScale, alpha: Math.random() * 0.5 + 0.3 });
   }
 
-  // Estrellas cercanas
+
   bgStarsNear = [];
   for (let i = 0; i < 35; i++) {
     bgStarsNear.push({ x: Math.random() * GAME_WIDTH, y: Math.random() * GAME_HEIGHT, size: (Math.random() * 2.5 + 1.5) * nearScale, alpha: Math.random() * 0.6 + 0.4, trail: Math.random() > 0.6 });
   }
 
-  // Fondo
+
   currentThemeColorRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[0].color);
   let initRGB = Phaser.Display.Color.IntegerToRGB(SECTIONS[0].color);
   let initialBgC = Phaser.Display.Color.GetColor(
@@ -1258,7 +1250,7 @@ function create() {
   );
   ui.bgRect = scene.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, initialBgC).setOrigin(0, 0).setDepth(0);
 
-  // HUD de sección
+
   ui.sectionBarBg = scene.add.rectangle(0, 0, GAME_WIDTH, 12, 0x333333).setOrigin(0, 0).setDepth(200);
   ui.sectionBarFill = scene.add.rectangle(0, 0, 0, 12, SECTIONS[0].color).setOrigin(0, 0).setDepth(201);
   ui.sectionText = scene.add.text(GAME_WIDTH - 10, 6, 'S1', {
@@ -1268,7 +1260,7 @@ function create() {
     fontStyle: 'bold'
   }).setOrigin(1, 0.5).setDepth(202);
 
-  // Pantalla de inicio
+
   ui.startText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 3, 'INFINITE RUNNER PLATFORMER', {
     fontSize: '32px',
     fontFamily: 'Arial',
@@ -1282,7 +1274,7 @@ function create() {
     color: COLORS.textHighlight
   }).setOrigin(0.5);
 
-  // Pantalla de pausa
+
   ui.pausedOverlay = scene.add.graphics();
   ui.pausedOverlay.fillStyle(COLORS.pausedOverlay, 0.7);
   ui.pausedOverlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
@@ -1296,7 +1288,7 @@ function create() {
     align: 'center'
   }).setOrigin(0.5).setDepth(101).setVisible(false);
 
-  // Pantalla de fin de juego
+
   ui.gameOverText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 3, 'GAME OVER', {
     fontSize: '48px',
     fontFamily: 'Arial',
@@ -1310,7 +1302,7 @@ function create() {
     color: COLORS.textHighlight
   }).setOrigin(0.5).setDepth(101).setVisible(false);
 
-  // Jugador (slime)
+
   player = scene.add.graphics({ x: 200, y: 300 });
   player.setDepth(30);
   scene.physics.add.existing(player);
@@ -1319,22 +1311,22 @@ function create() {
   player.body.allowGravity = false;
   player.setVisible(false);
 
-  // Graphics persistente para el rastro del jugador
+
   playerTrailGfx = scene.add.graphics().setDepth(29);
   playerTrailGfx.setBlendMode(Phaser.BlendModes.ADD);
 
 
 
-  // Grupo de pinchos
+
   spikes = scene.physics.add.group({
     allowGravity: false,
     immovable: true
   });
 
-  // Balas del jugador
+
   playerBullets = scene.physics.add.group({ allowGravity: false });
 
-  // Enemigos
+
   enemies = scene.physics.add.group({ allowGravity: false });
   airTriangles = scene.physics.add.group({ allowGravity: false });
 
@@ -1349,15 +1341,15 @@ function create() {
     spawnDeathExplosion(scene, tx, ty, COLORS.airTriangle, 6);
   });
 
-  // Balas enemigas
+
   enemyBullets = scene.physics.add.group({ allowGravity: false });
 
-  // Grupo de powerups
+
   powerups = scene.physics.add.group({ allowGravity: false });
   let warningLinesGroup = scene.add.group();
   scene.warningLinesGroup = warningLinesGroup;
 
-  // Colisiones y solapamientos
+
   scene.physics.add.overlap(player, spikes, () => playerDie(scene, 'spike'));
   scene.physics.add.overlap(player, enemies, (pl, en) => {
     if (playerState.state === 'downDashing' && (pl.body.velocity.y > 10 || pl.y < en.y)) {
@@ -1423,14 +1415,14 @@ function create() {
     }
   });
 
-  // Grupo de plataformas
+
   platforms = scene.physics.add.group({
     allowGravity: false,
     immovable: true
   });
   scene.physics.add.collider(player, platforms);
 
-  // Suelo inicial
+
   let startFloor = scene.add.rectangle(GAME_WIDTH / 2, 550, GAME_WIDTH * 1.5, 40, COLORS.platform);
   platforms.add(startFloor);
   scene.physics.add.existing(startFloor);
@@ -1440,7 +1432,7 @@ function create() {
   startFloor.body.checkCollision.left = false;
   startFloor.body.checkCollision.right = false;
 
-  // Barras de salto (HUD)
+
   ui.jumpBars = [];
   for (let i = 0; i < playerState.jumps.max; i++) {
     let bar = scene.add.rectangle(20 + i * 28, GAME_HEIGHT - 30, 24, 10, COLORS.powerupJump);
@@ -1448,7 +1440,7 @@ function create() {
     ui.jumpBars.push(bar);
   }
 
-  // Barras de vida (HUD) — diamantes rojos centrados abajo
+
   ui.healthBars = [];
   for (let i = 0; i < playerState.health.max; i++) {
     let hb = scene.add.star(GAME_WIDTH / 2 - (playerState.health.max - 1) * 14 + i * 28, GAME_HEIGHT - 14, 4, 5, 10, 0xff3333);
@@ -1456,7 +1448,7 @@ function create() {
     ui.healthBars.push(hb);
   }
 
-  // HUD de modo de disparo
+
   ui.shootModeText = scene.add.text(GAME_WIDTH - 20, GAME_HEIGHT - 30, '◆ HOMING', {
     fontSize: '20px',
     fontFamily: 'Arial',
@@ -1464,7 +1456,7 @@ function create() {
     fontStyle: 'bold'
   }).setOrigin(1, 0.5).setDepth(202);
 
-  // HUD de puntuación
+
   ui.scoreText = scene.add.text(20, 20, 'SCORE: 0', {
     fontSize: '24px',
     fontFamily: 'Arial',
@@ -1472,7 +1464,7 @@ function create() {
     fontStyle: 'bold'
   }).setOrigin(0, 0).setDepth(202);
 
-  // Texto del leaderboard
+
   ui.leaderboardText = scene.add.text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 60, '', {
     fontSize: '18px',
     fontFamily: 'Arial',
@@ -1480,7 +1472,7 @@ function create() {
     align: 'center'
   }).setOrigin(0.5).setDepth(101).setVisible(false);
 
-  // Manejo de input de teclado
+
   const onKeyDown = (event) => {
     let key = event.key;
     if (key.length === 1 && key !== ' ') {
@@ -1493,7 +1485,7 @@ function create() {
       }
       controls.held[arcadeCode] = true;
       if (checkKonamiInput(arcadeCode)) {
-        // Consumir la tecla para que no active pausa u otras acciones
+
         controls.pressed[arcadeCode] = false;
         showCheatsUnlockedMessage(_eventScene);
       }
@@ -1558,7 +1550,7 @@ function showCheatsUnlockedMessage(scene) {
   });
 }
 
-// ── resetGame ──────────────────────────────────────────────────────────────
+
 
 function resetGame(scene) {
   playerTrail = [];
@@ -1624,10 +1616,13 @@ function resetGame(scene) {
   floor.body.checkCollision.right = false;
 }
 
-// ── State machine ──────────────────────────────────────────────────────────
+
 
 const states = {
   start: {
+    enter(scene) {
+      Audio.stopBGM();
+    },
     update(scene, time, delta) {
       if (consumePressed('START1') || consumePressed('P1_1') || consumePressed('P1_U')) {
         changeState(scene, 'playing');
@@ -1642,6 +1637,7 @@ const states = {
   playing: {
     enter(scene) {
       scene.physics.resume();
+      Audio.startBGM(scene);
     },
     update(scene, time, delta) {
       if (consumePressed('START2') || consumePressed('P1_2')) {
@@ -1673,6 +1669,7 @@ const states = {
       ui.gameOverText.setVisible(true);
       ui.gameOverInstructions.setVisible(true);
       updateLeaderboard(currentScore);
+      Audio.stopBGM();
     },
     update(scene, time, delta) {
       if (consumePressed('START1') || consumePressed('P1_U') || consumePressed('P1_1')) {
@@ -1695,7 +1692,7 @@ function changeState(scene, newState) {
   if (states[currentState].enter) states[currentState].enter(scene);
 }
 
-// ── Playing sub-updates (Paso 4) ───────────────────────────────────────────
+
 
 function updateSectionProgress(scene, delta) {
   sectionTimer += delta;
@@ -1775,7 +1772,7 @@ function updateSpawning(scene, delta, themeValue) {
       createSpike(scene, spikeX, platY - 20, spikeWidth);
     } else if (!isMoving && (pendingBonusPowerup || Math.random() < 0.15)) {
       pendingBonusPowerup = false;
-      let pType = Phaser.Math.Between(0, 5); // 0=salto, 1=invulnerabilidad, 2=homing, 3=triple, 4=auto, 5=pierce
+      let pType = Phaser.Math.Between(0, 5);
       if (pType === 0 && playerState.jumps.max >= TUNING.PLAYER.JUMP_MAX) pType = 1;
       createPowerup(scene, nextPlatformX + platWidth / 2, platY - 40, pType);
     }
@@ -1897,21 +1894,21 @@ function updatePlayerInput(scene, delta, isOnGround) {
       emit('player:doubleJump');
       let jumpColor = getWeaponColor(shootMode);
       let jx = player.x, jy = player.y + 12;
-      // Anillo expansivo — Graphics en (jx,jy) para que scaleX/Y se expanda desde ahí
+
       let jRing = scene.add.graphics({ x: jx, y: jy });
       jRing.lineStyle(3, jumpColor, 0.85);
       jRing.strokeEllipse(0, 0, 24, 10);
       jRing.setBlendMode(Phaser.BlendModes.ADD);
       jRing.setDepth(28);
       scene.tweens.add({ targets: jRing, scaleX: 3.5, scaleY: 2.5, alpha: 0, duration: 380, ease: 'Power2', onComplete: () => jRing.destroy() });
-      // Segundo anillo más rápido
+
       let jRing2 = scene.add.graphics({ x: jx, y: jy });
       jRing2.lineStyle(1.5, 0xffffff, 0.6);
       jRing2.strokeEllipse(0, 0, 18, 8);
       jRing2.setBlendMode(Phaser.BlendModes.ADD);
       jRing2.setDepth(27);
       scene.tweens.add({ targets: jRing2, scaleX: 5, scaleY: 3, alpha: 0, duration: 260, ease: 'Power2', onComplete: () => jRing2.destroy() });
-      // Chispas que caen
+
       for (let i = 0; i < 8; i++) {
         let angle = (i / 8) * Math.PI * 2;
         let spark = scene.add.circle(
@@ -1933,7 +1930,7 @@ function updatePlayerInput(scene, delta, isOnGround) {
     }
   }
 
-  // FSM transitions
+
   if (playerState.state === 'hurt' && playerState.canBeHit()) {
     playerState.setState(isOnGround ? 'idle' : 'airborne');
   } else if (playerState.state !== 'downDashing' && playerState.state !== 'hurt') {
@@ -2074,12 +2071,12 @@ function updatePlayerBullets(scene, delta) {
     else if (btype === 'triple') { trailColor = COLORS.weaponTriple; trailSize = 4; }
     else { trailColor = COLORS.weaponHoming; trailSize = 5; }
 
-    // Halo exterior tenue
+
     let halo = scene.add.circle(b.x, b.y, trailSize * 1.6, trailColor, 0.22);
     halo.setBlendMode(Phaser.BlendModes.ADD);
     scene.tweens.add({ targets: halo, alpha: 0, scale: 0.1, duration: 220, onComplete: () => halo.destroy() });
 
-    // Núcleo blanco
+
     let core = scene.add.circle(b.x, b.y, trailSize * 0.5, 0xffffff, 0.9);
     core.setBlendMode(Phaser.BlendModes.ADD);
     scene.tweens.add({ targets: core, alpha: 0, scale: 0.2, duration: 150, onComplete: () => core.destroy() });
@@ -2127,7 +2124,7 @@ function updateHUD() {
   for (let i = 0; i < playerState.jumps.max; i++) {
     ui.jumpBars[i].setFillStyle(i < playerState.jumps.current ? COLORS.powerupJump : 0x555555);
   }
-  // Indicador de cheats activos
+
   if (cheatsEnabled) {
     if (!ui.cheatIndicator && _eventScene) {
       ui.cheatIndicator = _eventScene.add.text(GAME_WIDTH / 2, 35, '⚡ CHEATS ON ⚡', {
@@ -2140,9 +2137,9 @@ function updateHUD() {
 function playingUpdate(scene, time, delta) {
   playTime += delta;
 
-  // ── Cheats (activos solo si Konami Code fue ingresado) ─────────────────
+
   if (cheatsEnabled) {
-    // P1_3 (tecla O): avanzar sección o invocar boss
+
     if (consumePressed('P1_3')) {
       if (!bossState) {
         if (currentSection === 1 || currentSection === 4) {
@@ -2156,16 +2153,16 @@ function playingUpdate(scene, time, delta) {
         }
       }
     }
-    // P1_4 (tecla J): toggle invulnerabilidad eterna
+
     if (consumePressed('P1_4')) {
       playerState.invulnerableUntil = playerState.invulnerableUntil > playTime + 1000000 ? 0 : playTime + 99999999;
     }
-    // P1_5 (tecla K): matar boss actual
+
     if (consumePressed('P1_5') && bossState === 'active') {
       bossHp = 0;
       killBoss(scene);
     }
-    // P1_6 (tecla L): ciclar arma
+
     if (consumePressed('P1_6')) {
       const weapons = ['homing', 'auto', 'triple', 'pierce'];
       let idx = weapons.indexOf(shootMode);
@@ -2185,7 +2182,7 @@ function playingUpdate(scene, time, delta) {
   updateBossLogic(scene, time);
   updateJumpRecharge(delta);
 
-  // Detectar aterrizaje y dibujar slime
+
   let onGround = player.body.touching.down;
   if (!wasOnGround && onGround) {
     landingSquashTime = playTime;
