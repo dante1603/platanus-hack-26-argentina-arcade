@@ -418,7 +418,6 @@ let playerTrailGfx = null;
 
 let bgStarsNear = [];
 let bgStarsFar = [];
-let bgNebulaPoints = [];
 
 
 function getWeaponColor(mode) {
@@ -508,7 +507,6 @@ function updatePlayerTrail(scene, color, delta = 16) {
 
 
 function updateBackground(scene, delta) {
-  let time = scene.time.now;
   ui.bgStarsGfx.clear();
 
   bgStarsFar.forEach(star => {
@@ -846,11 +844,6 @@ function isMechanicActive(name) {
 
 
 
-let _eventScene = null;
-function emit(event, data) {
-  if (_eventScene) _eventScene.events.emit(event, data);
-}
-
 function updateHealthHUD() {
   for (let i = 0; i < ui.healthBars.length; i++) {
     ui.healthBars[i].setFillStyle(i < playerState.health.current ? 0xff3333 : 0x555555);
@@ -931,7 +924,7 @@ function spawnBoss(scene, sectionIdx) {
     onComplete: () => {
       bossState = 'active';
       bossNextAction = playTime + 1500;
-      emit('boss:enter');
+      Audio.bossEnter();
     }
   });
 }
@@ -939,7 +932,7 @@ function spawnBoss(scene, sectionIdx) {
 function killBoss(scene) {
   if (bossState === 'dying') return;
   bossState = 'dying';
-  emit('boss:die');
+  Audio.bossDie();
   let bx = boss.x, by = boss.y;
   let bnc = boss.neonColor || 0xff6600;
   boss.destroy();
@@ -958,14 +951,14 @@ function killBoss(scene) {
       sectionProgress = 0;
       gameSpeed = SECTIONS[0].speedFloor + loopCount * TUNING.BOSS.SPEED_LOOP_BONUS;
       pendingBonusPowerup = true;
-      emit('section:change');
+      Audio.sectionChange();
     } else {
       currentSection++;
       sectionTimer = 0;
       sectionProgress = 0;
       gameSpeed = Math.max(SECTIONS[currentSection].speedFloor, gameSpeed * 0.8);
       pendingBonusPowerup = true;
-      emit('section:change');
+      Audio.sectionChange();
     }
     playerState.health.current = playerState.health.max;
     updateHealthHUD();
@@ -1175,12 +1168,12 @@ function playerDie(scene, type) {
   playerState.health.current--;
   updateHealthHUD();
   if (playerState.health.current <= 0) {
-    emit('player:die');
+    Audio.die();
     changeState(scene, 'gameover');
   } else {
     playerState.setState('hurt');
     playerState.invulnerableUntil = playTime + TUNING.PLAYER.IMMUNITY_AFTER_HIT_MS;
-    emit('player:hurt');
+    Audio.hurt();
 
 
     scene.cameras.main.shake(150, 0.01);
@@ -1189,55 +1182,31 @@ function playerDie(scene, type) {
     scene.tweens.add({ targets: flash, alpha: 0, duration: 300, onComplete: () => flash.destroy() });
     if (type === 'enemyBullet') {
       triggerDeathPulse(scene);
-      emit('player:deathPulse');
+      Audio.deathPulse();
     }
   }
 }
 
 function preload() { }
 
+let _eventScene = null;
+
 function create() {
   const scene = this;
   _eventScene = scene;
 
 
-  scene.events.on('player:jump', () => Audio.jump());
-  scene.events.on('player:doubleJump', () => Audio.doubleJump());
-  scene.events.on('player:land', () => Audio.land());
-  scene.events.on('player:dash', () => Audio.dash());
-  scene.events.on('player:downDash', () => Audio.downDash());
-  scene.events.on('player:hurt', () => Audio.hurt());
-  scene.events.on('player:die', () => Audio.die());
-  scene.events.on('player:deathPulse', () => Audio.deathPulse());
-  scene.events.on('player:pierceCharge', (d) => Audio.pierceCharge(d.level));
-  scene.events.on('player:shoot', (d) => {
-    if (d.mode === 'homing') Audio.shootHoming();
-    else if (d.mode === 'auto') Audio.shootAuto();
-    else if (d.mode === 'triple') Audio.shootTriple();
-    else if (d.mode === 'pierce') Audio.pierceShoot(d.level);
-  });
-  scene.events.on('enemy:die', () => Audio.enemyDie());
-  scene.events.on('powerup:collect', () => Audio.powerup());
-  scene.events.on('boss:enter', () => Audio.bossEnter());
-  scene.events.on('boss:hurt', () => Audio.bossHurt());
-  scene.events.on('boss:die', () => Audio.bossDie());
-  scene.events.on('section:change', () => Audio.sectionChange());
-
-
   ui.bgStarsGfx = scene.add.graphics().setDepth(2);
-
-  let farScale = 1.2;
-  let nearScale = 1.0;
 
   bgStarsFar = [];
   for (let i = 0; i < 80; i++) {
-    bgStarsFar.push({ x: Math.random() * GAME_WIDTH, y: Math.random() * GAME_HEIGHT, size: (Math.random() * 1.5 + 0.5) * farScale, alpha: Math.random() * 0.5 + 0.3 });
+    bgStarsFar.push({ x: Math.random() * GAME_WIDTH, y: Math.random() * GAME_HEIGHT, size: (Math.random() * 1.5 + 0.5) * 1.2, alpha: Math.random() * 0.5 + 0.3 });
   }
 
 
   bgStarsNear = [];
   for (let i = 0; i < 35; i++) {
-    bgStarsNear.push({ x: Math.random() * GAME_WIDTH, y: Math.random() * GAME_HEIGHT, size: (Math.random() * 2.5 + 1.5) * nearScale, alpha: Math.random() * 0.6 + 0.4, trail: Math.random() > 0.6 });
+    bgStarsNear.push({ x: Math.random() * GAME_WIDTH, y: Math.random() * GAME_HEIGHT, size: Math.random() * 2.5 + 1.5, alpha: Math.random() * 0.6 + 0.4, trail: Math.random() > 0.6 });
   }
 
 
@@ -1374,7 +1343,7 @@ function create() {
       spawnDeathExplosion(scene, enemy.x, enemy.y, enemy.neonColor || 0xff0044, 8);
       enemy.destroy();
       enemiesDefeated++;
-      emit('enemy:die', { level: enemy.level, x: enemy.x, y: enemy.y });
+      Audio.enemyDie();
     } else {
       enemy.brilloExtra = 5;
       scene.time.delayedCall(100, () => { if (enemy.active) enemy.brilloExtra = 1; });
@@ -1410,7 +1379,7 @@ function create() {
         updateWeaponUI();
         showWeaponChangeIndicator(scene, 'PIERCE', '#ff2200');
       }
-      emit('powerup:collect', { type: pt });
+      Audio.powerup();
       pu.destroy();
     }
   });
@@ -1707,7 +1676,7 @@ function updateSectionProgress(scene, delta) {
       sectionTimer -= SECTIONS[currentSection].duration;
       sectionProgress = 0;
       currentSection++;
-      emit('section:change');
+      Audio.sectionChange();
       pendingBonusPowerup = true;
       playerState.health.current = playerState.health.max;
       updateHealthHUD();
@@ -1832,7 +1801,7 @@ function updatePlayerInput(scene, delta, isOnGround) {
       playerState.invulnerableUntil = Math.max(playerState.invulnerableUntil, playTime + 200);
       playerState.jumps.current--;
       playerState.setState('dashing');
-      emit('player:dash');
+      Audio.dash();
     }
     playerState.dash.lastTapL = playTime;
   }
@@ -1844,7 +1813,7 @@ function updatePlayerInput(scene, delta, isOnGround) {
       playerState.invulnerableUntil = Math.max(playerState.invulnerableUntil, playTime + 200);
       playerState.jumps.current--;
       playerState.setState('dashing');
-      emit('player:dash');
+      Audio.dash();
     }
     playerState.dash.lastTapR = playTime;
   }
@@ -1883,15 +1852,15 @@ function updatePlayerInput(scene, delta, isOnGround) {
         playerState.setState('downDashing');
         player.body.setVelocityY(TUNING.PLAYER.DOWN_DASH_VELOCITY);
         playerState.jumps.current--;
-        emit('player:downDash');
+        Audio.downDash();
       }
     } else if (isOnGround) {
       player.body.setVelocityY(TUNING.PLAYER.JUMP_VELOCITY);
-      emit('player:jump');
+      Audio.jump();
     } else if (playerState.jumps.current > 0) {
       player.body.setVelocityY(TUNING.PLAYER.JUMP_VELOCITY);
       playerState.jumps.current--;
-      emit('player:doubleJump');
+      Audio.doubleJump();
       let jumpColor = getWeaponColor(shootMode);
       let jx = player.x, jy = player.y + 12;
 
@@ -1962,12 +1931,12 @@ function updateShooting(scene) {
       else if (elapsed >= TUNING.SHOOT.PIERCE_CHARGE_MIN_MS) playerState.pierce.chargeLevel = 1;
       else playerState.pierce.chargeLevel = 0;
       if (playerState.pierce.chargeLevel > playerState.pierce.prevChargeLevel) {
-        emit('player:pierceCharge', { level: playerState.pierce.chargeLevel });
+        Audio.pierceCharge(playerState.pierce.chargeLevel);
       }
     } else if (playerState.pierce.charging) {
       if (playerState.pierce.chargeLevel > 0) {
         createPlayerBullet(scene, 'pierce', 0, playerState.pierce.chargeLevel);
-        emit('player:shoot', { mode: 'pierce', level: playerState.pierce.chargeLevel });
+        Audio.pierceShoot(playerState.pierce.chargeLevel);
         if (playerState.pierce.chargeLevel === 3) scene.cameras.main.shake(80, 0.005);
       }
       playerState.pierce.charging = false;
@@ -1984,13 +1953,13 @@ function updateShooting(scene) {
   else if (shootMode === 'triple') interval = TUNING.SHOOT.TRIPLE_INTERVAL_MS;
   if (playTime > lastFireTime + interval) {
     lastFireTime = playTime;
-    if (shootMode === 'homing') createPlayerBullet(scene, 'homing');
-    else if (shootMode === 'auto') createPlayerBullet(scene, 'auto');
+    if (shootMode === 'homing') { createPlayerBullet(scene, 'homing'); Audio.shootHoming(); }
+    else if (shootMode === 'auto') { createPlayerBullet(scene, 'auto'); Audio.shootAuto(); }
     else if (shootMode === 'triple') {
       let spread = TUNING.SHOOT.TRIPLE_SPREAD_DEG;
       for (let deg of [-spread, 0, spread]) createPlayerBullet(scene, 'triple', Phaser.Math.DegToRad(deg));
+      Audio.shootTriple();
     }
-    emit('player:shoot', { mode: shootMode });
   }
 }
 
@@ -2039,7 +2008,7 @@ function updatePlayerBullets(scene, delta) {
         bossHp -= dmg;
         if (!isPierce) b.destroy();
         boss.brilloExtra = 5;
-        emit('boss:hurt');
+        Audio.bossHurt();
         scene.time.delayedCall(80, () => { if (boss && boss.active) boss.brilloExtra = 1; });
         if (bossHp <= 0 && bossState !== 'dying') killBoss(scene);
         if (!isPierce) return;
@@ -2183,12 +2152,11 @@ function playingUpdate(scene, time, delta) {
   updateJumpRecharge(delta);
 
 
-  let onGround = player.body.touching.down;
-  if (!wasOnGround && onGround) {
+  if (!wasOnGround && isOnGround) {
     landingSquashTime = playTime;
-    emit('player:land');
+    Audio.land();
   }
-  wasOnGround = onGround;
+  wasOnGround = isOnGround;
   if (currentState === 'playing') {
     let st = computeSlimeTransform();
     updatePlayerTrail(scene, st.color, delta);
